@@ -107,15 +107,22 @@ real link after the first deploy and play it on phone and desktop.
 | Download stopped as soon as it passes the limit | `content-length` first, then counted while streaming | `download()` → `TOO_BIG` |
 | HLS segments fetched at once | 4, joined in playlist order | `PARALLEL` in `lib/soundcloud.js` |
 
-**Not known yet** (measure with the probe — `ms` of each step — before
-building on them):
+**Seen from the cloud** (first deploy, 2026-10-20):
 
-- how long one handler run may take on Telegram Serverless (a 10 MB track is
-  one download plus one upload inside the webhook's run);
-- how much memory a run gets (the whole file is held as one `Uint8Array`);
-- whether `*.sndcdn.com` and `api-v2.soundcloud.com` answer Telegram's servers
-  at all, and from which country (geo-blocked tracks come back as
-  `policy: BLOCK` or 403 → `BLOCKED`).
+- `api-v2.soundcloud.com`, the stream URLs and the AAC segments all answer
+  Telegram's servers; the scraped client_id works.
+- The probe track (Forss — Flickermood, 214 s, `policy: MONETIZE`) lists
+  `aac_160k`, `aac_96k` (`audio/mp4; codecs="mp4a.40.2"`) and `abr_sq`
+  (`audio/mpegurl`); resolve took 86 ms, downloading `aac_160k` (4.3 MB) 502 ms.
+- The first real link (an `on.soundcloud.com` share link) went from the
+  message to the uploaded audio in 2.8 s: 3.7 MB of `aac_160k`.
+
+**Not known yet:**
+
+- the longest a handler run may take, and the memory it gets (the whole file
+  is held as one `Uint8Array`): long tracks near `MAX_DURATION_SECONDS` are
+  untried;
+- whether the joined fMP4 `.m4a` plays and seeks well in every Telegram client.
 
 ## 5. Errors
 
@@ -155,8 +162,8 @@ downloaded but never sent.
 
 Roughly in order; each is a `lib/` module + tests + a line in this file.
 
-1. **First deploy, then `/sc`**: confirm reachability, formats and timings
-   from the cloud; adjust the limits and the format order to what it shows.
+1. ~~**First deploy, then `/sc`**~~ — done (§4, *Seen from the cloud*). Still
+   to try: a track near 50 minutes, and playing the `.m4a` on phone and desktop.
 2. **Playlists and albums** (`NOT_TRACK` today): list the tracks
    (`/resolve` gives the first ~5 in full, the rest as ids →
    `GET /tracks?ids=1,2,3`), then send them one by one with a progress
