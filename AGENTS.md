@@ -162,3 +162,20 @@ naming, the admin/command/test patterns and the deploy pipeline. In short:
 handlers and endpoints stay thin and call `tgcloud/lib/`; every feature gets a
 test in `test/` (`npm test`, offline); new columns on existing tables are
 nullable; pushing to `main` deploys.
+
+## This bot: SoundCloud downloader
+
+A SoundCloud track link sent to the bot in a private chat comes back as an
+audio message. Before touching that path, read
+[docs/SOUNDCLOUD.md](docs/SOUNDCLOUD.md): the flow, api-v2 and the scraped
+`client_id`, which stream formats are used, Telegram's limits, the error codes
+and the roadmap.
+
+- SoundCloud code lives in `tgcloud/lib/soundcloud.js` (no Bot API there) and
+  the Telegram side in `tgcloud/lib/download.js`. Tests run on a fake
+  SoundCloud (`soundcloud()` / `scTrack()` in `test/helpers.mjs`), never the
+  network.
+- Only the cloud can tell what SoundCloud does for the bot: `/sc [link]` (the
+  admin), or `endpoints/adminProbe` via Actions → Run in cloud / `tgcloud run`.
+- Project skills for Claude Code are in `.claude/skills/`: **soundcloud-api**,
+  **telegram-audio**, **bot-feature**.

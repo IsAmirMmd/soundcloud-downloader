@@ -4,7 +4,9 @@ How this bot is built, and the conventions every change follows. It comes from
 tgcloud-kit (the architecture of a production bot on Telegram Serverless, cut
 down to a starting point). The platform's own rules are in `AGENTS.md` and the
 SDK reference in `docs/tgcloud-sdk.md`. This file is about *this project's*
-structure. Keep it true when the structure changes.
+structure. Keep it true when the structure changes. How the SoundCloud side
+works (client_id, streams, limits, what can go wrong) is in
+[docs/SOUNDCLOUD.md](SOUNDCLOUD.md).
 
 ## 1. The platform in one paragraph
 
@@ -29,19 +31,25 @@ in the cloud (`run`).
 tgcloud/                      ← deployed code; the only code the platform sees
   schema.js                   ← every table, as named exports
   handlers/                   ← one file per update type; thin routers
-    message.js                ← /start (+ deep links), /stop, admin commands, pending answers
+    message.js                ← /start (+ deep links), /stop, admin commands, pending answers, SoundCloud links
     callback_query.js         ← inline buttons, routed by callback_data prefix
     my_chat_member.js         ← the bot blocked/unblocked (private) or added/removed (groups, channels)
   endpoints/                  ← one file per Mini App call; thin: authorize → lib → JSON
     me.js                     ← who is calling (isAdmin)
     sql.js                    ← admin-only raw SQL, used by `npm run sql`
+    adminProbe.js             ← admin-only: every step of a SoundCloud download, from the cloud (check.yml, run.yml)
+    adminSyncCommands.js      ← admin-only: sets the "/" command menus (deploy.yml, after each deploy)
   lib/                        ← all the logic; one module per feature
-    config.js                 ← constants (ADMIN_ID, MINI_APP_URL, UTC offset): no env vars exist
-    settings.js               ← key/value table: secrets, drafts, flags
+    config.js                 ← constants (ADMIN_ID, size/duration limits, PROBE_TRACK_URL): no env vars exist
+    soundcloud.js             ← SoundCloud api-v2: links, client_id (scraped, kept), resolve, streams, download
+    download.js               ← the bot's job: link → status → audio (file_id cache in `tracks`), `downloads` log, stats
+    probe.js                  ← /sc and adminProbe: is SoundCloud usable from Telegram's servers, step by step
+    settings.js               ← key/value table: secrets, drafts, flags (and the SoundCloud client_id)
     users.js                  ← users table: /start tracking, blocked, /stop, pending_action
     access.js                 ← callerId / isAdmin / requireAdmin / forbidden() for endpoints
-    admin.js                  ← bodies of the admin commands (/stats, /backup, /setcommands)
-    menu.js                   ← the /start menu as screens (menu:<screen>)
+    admin.js                  ← bodies of the admin commands (/stats, /backup, /setclientid, /setcommands)
+    menu.js                   ← the /start menu as screens (menu:<screen>): home and help
+    bot.js                    ← the bot's @username (getMe, kept)
     query.js                  ← pagination, search, ORDER BY, WHERE helpers for list endpoints
     html.js                   ← esc(), link(), fa() for parse_mode HTML texts
     time.js                   ← now(), DAY, local time with a fixed UTC offset
@@ -50,9 +58,13 @@ src/                          ← the Mini App (React + Vite), if there is one; 
 test/                         ← offline tests: the real modules on a mock SDK (node:sqlite)
 scripts/sql.mjs               ← `npm run sql -- "SELECT …"`
 .github/workflows/
-  deploy.yml                  ← push to main → build, push, migrate --safe, webhook sync
+  deploy.yml                  ← push to main → npm test, build, push, migrate --safe, webhook sync, "/" commands
+  check.yml                   ← other branches / PRs → npm test, then endpoints/adminProbe in the cloud (no deploy)
+  run.yml                     ← by hand: run one module in the cloud as the admin (e.g. endpoints/adminProbe)
   scheduled.yml               ← cron → `tgcloud run handlers/message '{ text: "/backup", … }'`
+.claude/skills/               ← this project's skills for Claude Code (soundcloud-api, telegram-audio, bot-feature)
 docs/ARCHITECTURE.md          ← this file
+docs/SOUNDCLOUD.md            ← how a link becomes an audio message; limits, risks, roadmap
 AGENTS.md, docs/tgcloud-sdk.md← platform rules + SDK reference (from `tgcloud init`)
 tgcloud.jsonc                 ← "static": the Mini App's build folder
 .tgcloud/                     ← CLI state + credentials; gitignored; never read or edit
@@ -102,7 +114,9 @@ plus a workflow. A job therefore also works by hand: send the command, or
   4. admin commands;
   5. public commands;
   6. the answer to a pending question;
-  7. everything else is ignored, with no reply.
+  7. a SoundCloud link in a private chat (`replyDownload`, lib/download.js);
+  8. other text in a private chat gets a one-line hint about links;
+  9. everything else (unknown commands, groups) is ignored, with no reply.
 - **callback_data** is `<feature>:<action>[:<args>]`, at most 64 bytes, for
   example `menu:help` or `wk:pub:-1001234`. Each lib module exports
   `handleXCallback(query)`, which returns `true` when the button was one of
@@ -127,8 +141,11 @@ from `lib/admin.js`, or to a feature module. A failure goes to the admin as
 `⚠️ Command failed: …`. Without that message a failure is silent, because logs
 are visible only through `tgcloud run`.
 
-The `/` suggestions come from `setMyCommands`. Re-send `/setcommands` after
-changing the list, because Telegram doesn't pick up new commands by itself.
+The `/` suggestions come from `setMyCommands` (`syncCommands()` in
+`lib/admin.js`). The deploy runs it after every push to main
+(`endpoints/adminSyncCommands.js`), and the admin's `/start` runs it too:
+the admin's own list can be set only once they have a chat with the bot.
+`/setcommands` does the same by hand.
 
 ### State and configuration
 
@@ -223,8 +240,11 @@ changing the list, because Telegram doesn't pick up new commands by itself.
 - `failNext(method, code, description)` to simulate Bot API errors;
 - `mockApi(method, fn)` to fake return values.
 
-`helpers.mjs` builds updates for the tests: `msg`, `press`, `membership` and
-`ctxOf`.
+`helpers.mjs` builds updates for the tests: `msg`, `groupMsg`, `press`,
+`membership` and `ctxOf`. `soundcloud({ tracks, short, down })` routes every
+`fetch` to a fake soundcloud.com, api-v2 and media CDN, and `scTrack(id, …)`
+builds a track as api-v2 returns it (stream formats, policy, length). Nothing
+in `npm test` touches the network.
 
 Every feature gets tests for:
 - the happy path;
@@ -238,9 +258,10 @@ cloud is right. Check against the real DB and Bot API without deploying, using
 
 ## 9. Deploy pipeline
 
-`main` is what runs. `deploy.yml` runs on every push to main that touches
-`tgcloud/` or the front-end:
-1. `npm ci`
+`main` is what runs, and the work happens on it directly (one developer).
+`deploy.yml` runs on every push to main that touches `tgcloud/`, `test/` or the
+front-end:
+1. `npm ci`, then `npm test`: when a test fails, nothing is deployed.
 2. `npm run build --if-present` (the Mini App)
 3. `tgcloud fetch` and `tgcloud push` (`fetch` first, because a fresh checkout
    has no snapshot)
@@ -249,6 +270,7 @@ cloud is right. Check against the real DB and Bot API without deploying, using
    schema must not stay behind the code.
 5. `tgcloud webhook sync`, `always()`. The update types the bot receives
    come from `handlers/`, and a half-failed push may not have refreshed them.
+6. `endpoints/adminSyncCommands`, `always()`: the `/` menus.
 
 Setup, once:
 - In BotFather, open the bot, then **Serverless → CLI Access → Access token**.
@@ -256,7 +278,8 @@ Setup, once:
   workflows do nothing.
 - After the first deploy:
   - run `npx tgcloud migrate` (or let CI do it);
-  - send `/setcommands`;
+  - the admin sends `/start` once (the deploy sets the `/` menus, but the
+    admin's own list needs that chat), then `/sc` to check SoundCloud;
   - set the Mini App URL in BotFather (if there is a Mini App).
 
 Destructive schema changes, anything `--safe` skips, are applied by hand with
@@ -273,7 +296,9 @@ Destructive schema changes, anything `--safe` skips, are applied by hand with
    - a prefix in `callback_query.js`;
    - a thin `endpoints/<name>.js` for the Mini App.
 4. **Tests**: `test/<feature>.test.mjs`. Then `npm test`.
-5. **Ship**: commit and push to main. If commands changed, send `/setcommands`.
+5. **Check in the cloud** when SoundCloud or the Bot API's real behavior
+   matters: Actions → Run in cloud, or `npx tgcloud run endpoints/adminProbe …`.
+6. **Ship**: commit and push to main. The deploy also re-sends the `/` command lists.
 
 Bigger building blocks are in the tgcloud-growth skill. Each comes with
 schema, lib code and the lessons learned in production:
@@ -298,6 +323,10 @@ schema, lib code and the lessons learned in production:
 - **The CLI can crash after a successful push**, so migrate and webhook sync
   run as separate `always()` steps.
 - **Telegram doesn't show new `/` commands** until `setMyCommands` runs again.
+- **Hosts that answer you may not answer the bot.** The calculator bot this
+  project follows found Iranian exchanges unreachable from Telegram's servers.
+  Every outside service is checked from the cloud (`adminProbe`) before a
+  feature relies on it.
 - **Invite links need the bot's "Add subscribers" admin right.**
   `chat_member` updates need the bot to be an admin and `chat_member` in the
   webhook's allowed updates. Deploying `handlers/chat_member.js` adds it.
