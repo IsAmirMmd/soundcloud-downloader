@@ -35,13 +35,36 @@ export const users = table('users', {
   firstSeen: index('idx_users_first_seen').on(t.first_seen_at),
 }));
 
-// Example of a feature table — uncomment and adapt:
-// export const votes = table('votes', {
-//   id:         integer('id').primaryKey({ autoIncrement: true }),
-//   user_id:    integer('user_id').notNull(),
-//   item_id:    integer('item_id').notNull(),
-//   liked:      boolean('liked').notNull(),
-//   created_at: integer('created_at').default(sql`(unixepoch())`),
-// }, (t) => ({
-//   itemUser: uniqueIndex('uidx_votes_item_user').on(t.item_id, t.user_id),
-// }));
+// The tracks already on Telegram (lib/download.js): a SoundCloud track id → the
+// file_id of its audio, so the next request for it is sent again without
+// downloading anything.
+export const tracks = table('tracks', {
+  track_id:       integer('track_id').primaryKey(),     // SoundCloud's id
+  permalink_url:  text('permalink_url'),
+  title:          text('title'),
+  artist:         text('artist'),
+  duration:       integer('duration'),                  // seconds
+  file_id:        text('file_id').notNull(),
+  file_unique_id: text('file_unique_id'),
+  size:           integer('size'),                      // bytes uploaded
+  format:         text('format'),                       // which stream it came from, e.g. 'progressive audio/mpeg'
+  sends:          integer('sends').default(0),          // times delivered, the first upload included
+  created_at:     integer('created_at').default(sql`(unixepoch())`),
+  last_sent_at:   integer('last_sent_at').default(sql`(unixepoch())`),
+});
+
+// Every link someone sent (lib/download.js): what came of it, for /stats and
+// for finding out why downloads fail (logs are visible only through `tgcloud run`).
+export const downloads = table('downloads', {
+  id:         integer('id').primaryKey({ autoIncrement: true }),
+  user_id:    integer('user_id').notNull(),
+  url:        text('url').notNull(),                    // the link as normalized by lib/soundcloud.js
+  track_id:   integer('track_id'),                      // null when it never resolved
+  status:     text('status').notNull(),                 // 'sent' (downloaded) | 'cached' (file_id reused) | 'failed'
+  error:      text('error'),                            // SoundcloudError code, or INTERNAL
+  ms:         integer('ms'),                            // from the link to the audio (or the error)
+  created_at: integer('created_at').default(sql`(unixepoch())`),
+}, (t) => ({
+  created: index('idx_downloads_created').on(t.created_at),
+  user:    index('idx_downloads_user').on(t.user_id),
+}));

@@ -63,9 +63,10 @@ test('feedback: the button asks, the next message is forwarded to the admin', as
   assert.match(forward.params.text, /Great bot/);
   assert.equal(thanks.params.chat_id, USER);
 
-  // The question was answered: the next message is ignored.
+  // The question was answered: the next message is not forwarded (it only
+  // gets the hint about links, test/download.test.mjs).
   await message(msg(USER, 'hello?'), {});
-  assert.deepEqual(take(), []);
+  assert.ok(take().every((c) => c.params.chat_id === USER));
 });
 
 test('/stop and blocking are recorded', async () => {

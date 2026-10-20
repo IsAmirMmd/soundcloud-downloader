@@ -1,0 +1,38 @@
+# Runs one module in the cloud as the admin, without deploying (`tgcloud run`
+# sends this repo's modules): Actions → Run in cloud → Run workflow. For example
+#   endpoints/adminProbe  {}                                          the default track, every step
+#   endpoints/adminProbe  { url: "https://soundcloud.com/…" }         another link
+#   endpoints/sql         { q: "SELECT status, error, count(*) AS n FROM downloads GROUP BY 1, 2" }
+# Needs the repository secret TGCLOUD_TOKEN. Admin id: lib/config.js ADMIN_ID.
+name: Run in cloud
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: Module, e.g. endpoints/adminProbe
+        required: true
+        default: endpoints/adminProbe
+      args:
+        description: Its input (JSON5)
+        required: true
+        default: '{}'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+      # Through the environment, so the inputs are never pasted into the script.
+      MODULE: ${{ inputs.module }}
+      ARGS: ${{ inputs.args }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: |
+          mkdir -p .tgcloud
+          npx tgcloud --no-pager run "$MODULE" "$ARGS" --ctx '{ initData: { user: { id: 199419831 } } }'

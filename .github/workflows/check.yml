@@ -1,0 +1,48 @@
+# Checks a branch before it reaches main (where deploy.yml ships it):
+# - test:  the offline tests (npm test).
+# - cloud: runs this branch's code in the cloud WITHOUT deploying it
+#          (`tgcloud run` sends the local modules): endpoints/adminProbe walks
+#          every step of a SoundCloud download from where the bot really runs —
+#          the only place that tells whether SoundCloud answers Telegram's
+#          servers, and which stream formats it hands them.
+#          Needs the repository secret TGCLOUD_TOKEN; without it the job does nothing.
+name: Check
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request: {}
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  cloud:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.TGCLOUD_TOKEN != ''
+      - uses: actions/setup-node@v4
+        if: env.TGCLOUD_TOKEN != ''
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: env.TGCLOUD_TOKEN != ''
+      - name: SoundCloud, from the cloud
+        if: env.TGCLOUD_TOKEN != ''
+        run: |
+          mkdir -p .tgcloud
+          npx tgcloud --no-pager run endpoints/adminProbe '{}' --ctx '{ initData: { user: { id: 199419831 } } }'

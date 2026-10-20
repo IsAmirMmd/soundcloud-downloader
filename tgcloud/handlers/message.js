@@ -3,13 +3,16 @@
 // `ctx.update`. Keep this file a router: the work happens in lib/.
 //
 // Order matters: payments → /start (with deep-link payloads) → /stop → admin
-// commands → public commands → the answer to a pending question → ignore.
+// commands → public commands → the answer to a pending question → a
+// SoundCloud link to download → a hint (private chats) → ignore.
 
 import { api } from 'sdk';
 import { ADMIN_ID } from '../lib/config.js';
 import { trackStart, unsubscribe, takePending } from '../lib/users.js';
-import { sendHome } from '../lib/menu.js';
-import { sendStats, sendBackup, setCommands } from '../lib/admin.js';
+import { sendHome, sendScreen } from '../lib/menu.js';
+import { sendStats, sendBackup, setCommands, syncCommands, setClientId } from '../lib/admin.js';
+import { sendProbe } from '../lib/probe.js';
+import { replyDownload } from '../lib/download.js';
 
 // The admin command in `text`, started; or null when it is not one.
 // Scheduled jobs call these too (.github/workflows/scheduled.yml).
@@ -18,6 +21,8 @@ function adminCommand(message, text) {
   if (text === '/stats') return sendStats();
   if (text === '/backup') return sendBackup();
   if (text === '/setcommands') return setCommands();
+  if (/^\/sc(@\w+)?(\s|$)/.test(text)) return sendProbe(text);
+  if (/^\/setclientid(@\w+)?(\s|$)/.test(text)) return setClientId(text);
   return null;
 }
 
@@ -25,6 +30,7 @@ function adminCommand(message, text) {
 // prefix, e.g. `ref_<user id>`, `inv_<code>`. true when handled.
 // The first payload a user came with is kept in users.start_param (attribution).
 async function startPayload(message, payload) {
+  if (payload === 'help') { await sendScreen(message, 'help'); return true; }
   // const invite = /^inv_(\w+)$/.exec(payload);
   // if (invite) { await acceptInvite(message, invite[1]); return true; }
   return false;
@@ -38,6 +44,8 @@ export default async function (message, ctx) {
 
   if (isPrivate && /^\/start(\s|$)/.test(text)) {
     await trackStart(message);
+    // The admin's "/" menu can be set only once they have a chat with the bot.
+    if (message.from?.id === ADMIN_ID) await syncCommands().catch(console.error);
     const payload = /^\/start\s+(\S+)$/.exec(text)?.[1];
     if (payload && (await startPayload(message, payload))) return;
     return sendHome(message);
@@ -58,6 +66,8 @@ export default async function (message, ctx) {
     }
   }
 
+  if (isPrivate && text === '/help') return sendScreen(message, 'help');
+
   // The answer to a question the bot asked (lib/users.js askFor).
   const pending = await takePending(message);
   if (pending === 'feedback') {
@@ -65,5 +75,13 @@ export default async function (message, ctx) {
     return api.sendMessage({ chat_id: message.chat.id, text: 'ممنون، رسید 🙏' });
   }
 
-  // Anything else (unknown commands, free text in groups) gets no reply.
+  // A SoundCloud link sent to the bot itself: the track comes back as audio.
+  // Groups are left alone for now (docs/SOUNDCLOUD.md, roadmap).
+  if (isPrivate && (await replyDownload(message, text))) return;
+
+  // Anything else in the private chat: say what the bot takes. Unknown
+  // commands and everything in groups get no reply.
+  if (isPrivate && text && !text.startsWith('/')) {
+    return api.sendMessage({ chat_id: message.chat.id, text: '🔗 لینک یه ترک ساندکلاد رو بفرست تا فایلش رو برات بفرستم.\nراهنما: /help' });
+  }
 }

@@ -1,17 +1,23 @@
-// Shared by the tests: a fresh database per test, update builders, ctx.
+// Shared by the tests: a fresh database per test, update builders, ctx, and a
+// fake SoundCloud.
 
 import * as schema from '../tgcloud/schema.js';
 import { createTables } from './sdk/db.mjs';
-import { resetApi } from './sdk/sdk.mjs';
+import { resetApi, take as takeAll, mockFetch } from './sdk/sdk.mjs';
 import { ADMIN_ID } from '../tgcloud/lib/config.js';
 
 export { ADMIN_ID };
 export { rows, row, exec } from './sdk/db.mjs';
-export { calls, take, mockApi, failNext, mockFetch } from './sdk/sdk.mjs';
+export { calls, mockApi, failNext, mockFetch } from './sdk/sdk.mjs';
+
+// The Bot API calls since the last take(), [{ method, params }]. Without getMe:
+// lib/bot.js asks it once and keeps it, so whether it shows depends on test order.
+export const take = () => takeAll().filter((c) => c.method !== 'getMe');
 
 export function fresh() {
   createTables(schema);
   resetApi();
+  mockFetch(async (url) => { throw new Error(`fetch(${url}) in a test: mock it with mockFetch() or soundcloud()`); });
 }
 
 const user = (id, extra = {}) => ({ id, is_bot: false, first_name: `User${id}`, ...extra });
@@ -25,6 +31,9 @@ export const msg = (from, text, extra = {}) => ({
   text,
   ...extra,
 });
+
+// The same in a group.
+export const groupMsg = (from, text, chatId = -1001234) => msg(from, text, { chat: { id: chatId, type: 'supergroup', title: 'Group' } });
 
 // A button press by `from` on a message the bot sent them.
 export const press = (from, data, messageId = 1) => ({
@@ -45,3 +54,134 @@ export const membership = (from, status) => ({
 
 // ctx for an endpoint call by `id` (verified init data in the cloud).
 export const ctxOf = (id) => ({ initData: { user: user(id) } });
+
+// ---------- a fake SoundCloud (lib/soundcloud.js) ----------
+
+export const CLIENT_ID = 'a'.repeat(32);
+
+const STREAMS = {
+  progressive: { protocol: 'progressive', mime_type: 'audio/mpeg' },
+  'hls-mp3': { protocol: 'hls', mime_type: 'audio/mpeg' },
+  'hls-aac': { protocol: 'hls', mime_type: 'audio/mp4; codecs="mp4a.40.2"' },
+  'hls-opus': { protocol: 'hls', mime_type: 'audio/ogg; codecs="opus"' },
+  encrypted: { protocol: 'ctr-encrypted-hls', mime_type: 'audio/mp4; codecs="mp4a.40.2"' },
+};
+
+// A track as api-v2's /resolve returns it. `streams` are keys of STREAMS.
+export function scTrack(id, { streams = ['hls-aac', 'hls-mp3', 'progressive'], policy = 'ALLOW', seconds = 180, snipped = false, ...extra } = {}) {
+  return {
+    kind: 'track',
+    id,
+    title: `Track ${id}`,
+    user: { username: 'artist', avatar_url: `https://i1.sndcdn.com/avatars-${id}-large.jpg` },
+    duration: snipped ? 30_000 : seconds * 1000,
+    full_duration: seconds * 1000,
+    permalink_url: `https://soundcloud.com/artist/track-${id}`,
+    artwork_url: `https://i1.sndcdn.com/artworks-${id}-large.jpg`,
+    policy,
+    track_authorization: `auth-${id}`,
+    media: {
+      transcodings: streams.map((s) => ({
+        url: `https://api-v2.soundcloud.com/media/soundcloud:tracks:${id}/${s}/stream/${STREAMS[s].protocol}`,
+        preset: s,
+        snipped,
+        format: STREAMS[s],
+        quality: 'sq',
+      })),
+    },
+    ...extra,
+  };
+}
+
+// The bytes of a file the fake serves: its name, so a test can tell what was joined.
+export const fakeBytes = (name) => new Uint8Array(Buffer.from(`<${name}>`));
+export const asText = (bytes) => Buffer.from(bytes).toString();
+
+function reply(status, body, { url, headers = {} } = {}) {
+  const bytes = body instanceof Uint8Array ? body : null;
+  const text = bytes ? Buffer.from(bytes).toString() : typeof body === 'string' ? body : JSON.stringify(body);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    url,
+    headers: { get: (name) => headers[name.toLowerCase()] ?? null },
+    text: async () => text,
+    json: async () => JSON.parse(text),
+    // Two chunks, the way a real body streams.
+    body: (async function* () {
+      const all = bytes ?? new Uint8Array(Buffer.from(text));
+      yield all.subarray(0, Math.ceil(all.length / 2));
+      yield all.subarray(Math.ceil(all.length / 2));
+    })(),
+  };
+}
+
+const paramsOf = (query = '') => Object.fromEntries(query.split('&').filter(Boolean)
+  .map((kv) => kv.split('=').map(decodeURIComponent)));
+
+// Routes every fetch to a fake soundcloud.com, api-v2 and media CDN.
+//   tracks   { '<soundcloud.com link>': scTrack(…) | { kind: 'playlist' } }
+//   short    { '<share link>': '<where it redirects>' }
+//   clientId the id the site hands out and api-v2 accepts
+//   pageId   false: the page carries no id, only its script does
+//   down     substrings of URLs that answer 503
+// Returns the URLs asked, in order.
+export function soundcloud({ tracks = {}, short = {}, clientId = CLIENT_ID, pageId = true, down = [] } = {}) {
+  const asked = [];
+  mockFetch(async (url) => {
+    asked.push(url);
+    if (down.some((d) => url.includes(d))) return reply(503, 'Service Unavailable');
+    const [base, query] = url.split('?');
+    const params = paramsOf(query);
+
+    if (url === 'https://soundcloud.com/') {
+      const hydration = pageId ? `{"hydratable":"apiClient","data":{"id":"${clientId}","isExpiring":false}}` : '{"hydratable":"features","data":{}}';
+      return reply(200, `<html><script>window.__sc_hydration = [${hydration}];</script>` +
+        '<script crossorigin src="https://a-v2.sndcdn.com/assets/0-vendor.js"></script>' +
+        '<script crossorigin src="https://a-v2.sndcdn.com/assets/49-app.js"></script></html>');
+    }
+    if (base === 'https://a-v2.sndcdn.com/assets/49-app.js') return reply(200, `n.push({client_id:"${clientId}",env:"production"})`);
+    if (base.startsWith('https://a-v2.sndcdn.com/assets/')) return reply(200, 'var vendor=1;');
+    if (short[url]) return reply(200, '<html></html>', { url: short[url] });
+
+    if (base.startsWith('https://api-v2.soundcloud.com/')) {
+      if (params.client_id !== clientId) return reply(401, '{"error":"invalid client_id"}');
+      if (base === 'https://api-v2.soundcloud.com/resolve') {
+        return tracks[params.url] ? reply(200, tracks[params.url]) : reply(404, '{}');
+      }
+      const m = /\/media\/soundcloud:tracks:(\d+)\/([\w-]+)\/stream\/([\w-]+)$/.exec(base);
+      if (m) {
+        if (params.track_authorization !== `auth-${m[1]}`) return reply(403, '{}');
+        return reply(200, m[3] === 'progressive'
+          ? { url: `https://cf-media.sndcdn.com/t${m[1]}.mp3?Policy=p&Signature=s` }
+          : { url: `https://cf-hls-media.sndcdn.com/playlist/t${m[1]}/${m[2]}/playlist.m3u8?Policy=p` });
+      }
+    }
+
+    const media = /^https:\/\/cf-media\.sndcdn\.com\/(t\d+\.mp3)$/.exec(base);
+    if (media) return reply(200, fakeBytes(media[1]), { headers: { 'content-length': String(fakeBytes(media[1]).length) } });
+    const playlist = /^https:\/\/cf-hls-media\.sndcdn\.com\/playlist\/(t\d+)\/([\w-]+)\/playlist\.m3u8$/.exec(base);
+    if (playlist) {
+      const [, t, s] = playlist;
+      const ext = s === 'hls-aac' ? 'm4s' : 'mp3';
+      return reply(200, [
+        '#EXTM3U',
+        '#EXT-X-VERSION:6',
+        '#EXT-X-TARGETDURATION:10',
+        ...(s === 'hls-aac' ? ['#EXT-X-MAP:URI="init.mp4"'] : []),
+        '#EXTINF:10.0,',
+        `https://cf-hls-media.sndcdn.com/media/0/10/${t}.${ext}?Policy=p`,   // absolute
+        '#EXTINF:10.0,',
+        `/media/10/20/${t}.${ext}?Policy=p`,                                // from the host's root
+        '#EXTINF:5.0,',
+        `seg3.${ext}`,                                                     // next to the playlist
+        '#EXT-X-ENDLIST',
+      ].join('\n'));
+    }
+    if (/^https:\/\/cf-hls-media\.sndcdn\.com\//.test(base)) return reply(200, fakeBytes(base.split('/').slice(-3).join('/')));
+    const art = /^https:\/\/i1\.sndcdn\.com\/((?:artworks|avatars)-\d+-t300x300\.jpg)$/.exec(base);
+    if (art) return reply(200, fakeBytes(art[1]));
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  return asked;
+}

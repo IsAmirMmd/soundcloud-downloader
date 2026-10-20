@@ -1,6 +1,7 @@
 # Deploys the bot (and the Mini App, if the project has one) to Telegram
 # Serverless on every push to main that changes them, so the live bot always
-# runs what is on main.
+# runs what is on main. Work happens on main directly (one developer), so the
+# offline tests run first: when they fail, nothing is deployed.
 # Needs the repository secret TGCLOUD_TOKEN (BotFather → your bot → Serverless →
 # CLI Access → Access token); without it the job does nothing.
 name: Deploy bot
@@ -17,6 +18,8 @@ on:
       - 'tgcloud.jsonc'
       - 'package.json'
       - 'package-lock.json'
+      - 'test/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch: {}
 
 concurrency: deploy
@@ -36,6 +39,11 @@ jobs:
           cache: npm
       - run: npm ci
         if: env.TGCLOUD_TOKEN != ''
+      # The gate: every later step needs it to pass, including the always() ones.
+      - name: Test
+        id: test
+        if: env.TGCLOUD_TOKEN != ''
+        run: npm test
       # push uploads the Mini App's build folder as it is on disk: build first.
       # A bot without a front-end has no build script, and this is a no-op.
       - run: npm run build --if-present
@@ -43,19 +51,26 @@ jobs:
       # fetch: learn the cloud's current revision, so push sends only the changes
       # (a fresh checkout has no .tgcloud/ snapshot). main is the source of truth:
       # modules that exist only in the cloud are deleted.
+      # The CLI (0.2.0) can crash after the server took the push, while it writes
+      # its local snapshot. Then fetch and push again: "No changes to deploy"
+      # when the first one went through, the deploy itself when it didn't.
       - name: Deploy
         if: env.TGCLOUD_TOKEN != ''
         run: |
           mkdir -p .tgcloud
           npx tgcloud fetch
-          npx tgcloud push
+          npx tgcloud push || {
+            echo "::warning::tgcloud push failed; fetching and pushing again"
+            npx tgcloud fetch
+            npx tgcloud push
+          }
       # migrate --safe: apply added tables/columns/indexes; anything that drops
       # data is skipped and must be applied by hand (`npx tgcloud migrate`).
       # Its own step, run even when push failed: push can fail after the code is
       # already deployed (the CLI crashing while writing its local snapshot), and
       # the schema must not stay behind the code.
       - name: Migrate
-        if: always() && env.TGCLOUD_TOKEN != ''
+        if: always() && steps.test.outcome == 'success' && env.TGCLOUD_TOKEN != ''
         run: |
           mkdir -p .tgcloud
           npx tgcloud migrate --safe
@@ -63,7 +78,14 @@ jobs:
       # refreshes them, but a push that failed half way may not have. Sync is
       # idempotent, keeps pending updates, and prints what the webhook receives.
       - name: Webhook
-        if: always() && env.TGCLOUD_TOKEN != ''
+        if: always() && steps.test.outcome == 'success' && env.TGCLOUD_TOKEN != ''
         run: |
           mkdir -p .tgcloud
           npx tgcloud webhook sync
+      # The "/" menus (lib/admin.js syncCommands), so a changed command list
+      # shows up without sending /setcommands. Admin id: lib/config.js ADMIN_ID.
+      - name: Commands
+        if: always() && steps.test.outcome == 'success' && env.TGCLOUD_TOKEN != ''
+        run: |
+          mkdir -p .tgcloud
+          npx tgcloud --no-pager run endpoints/adminSyncCommands '{}' --ctx '{ initData: { user: { id: 199419831 } } }'

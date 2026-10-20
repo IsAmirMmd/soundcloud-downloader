@@ -1,11 +1,13 @@
 // The admin's commands (handlers/message.js routes to them). Each returns a
 // promise; a failure is reported to the admin as "⚠️ Command failed".
 
-import { api, db, InputFile } from 'sdk';
+import { api, db, InputFile, BotApiError } from 'sdk';
 import { sql } from 'sdk/db';
 import { ADMIN_ID } from './config.js';
 import { toCsv, utf8Encode } from './files.js';
 import { fa } from './html.js';
+import { setSetting } from './settings.js';
+import { downloadStats } from './download.js';
 import { stamp } from './time.js';
 
 const tell = (text, extra = {}) => api.sendMessage({ chat_id: ADMIN_ID, text, ...extra });
@@ -23,20 +25,26 @@ export async function userStats() {
   return Object.fromEntries(Object.entries(s ?? {}).map(([k, v]) => [k, Number(v ?? 0)]));
 }
 
-// /stats
+// /stats — the bot's users, then what they downloaded and why links failed.
 export async function sendStats() {
   const s = await userStats();
+  const d = await downloadStats();
+  const errors = d.errors.map((e) => `${e.error}: ${fa(e.n)}`).join(' · ') || '—';
   await tell(
     `👥 Users: ${fa(s.users)}\n▶️ Started: ${fa(s.started)}\n⛔️ Blocked: ${fa(s.blocked)}\n` +
-    `🆕 Last 24h: ${fa(s.new_1d)} · last 7 days: ${fa(s.new_7d)}`);
+    `🆕 Last 24h: ${fa(s.new_1d)} · last 7 days: ${fa(s.new_7d)}\n\n` +
+    `🔗 Links: ${fa(d.links)} from ${fa(d.users)} users · last 24h: ${fa(d.links_1d)} from ${fa(d.users_1d)}\n` +
+    `⬇️ Downloaded: ${fa(d.sent)} · ♻️ from cache: ${fa(d.cached)} · ❌ failed: ${fa(d.failed)}\n` +
+    `🎵 Tracks on Telegram: ${fa(d.tracks)}\n` +
+    `⚠️ Errors: ${errors}`);
 }
 
 // Tables in /backup. `settings` is left out on purpose: it holds secrets that
 // should not sit in a chat as a file.
-const BACKUP_TABLES = ['users'];
+const BACKUP_TABLES = ['users', 'tracks', 'downloads'];
 
 // /backup — every table as a CSV file (run on a schedule by
-// .github/workflows/scheduled.yml if you enable it).
+// .github/workflows/scheduled.yml).
 export async function sendBackup() {
   const files = [];
   for (const table of BACKUP_TABLES) {
@@ -58,20 +66,50 @@ export async function sendBackup() {
   }
 }
 
-// /setcommands — the list Telegram suggests after typing "/". Everyone sees
-// the public commands; the admin's own chat also lists the admin ones.
-// Run it once after deploying, and again whenever the lists change.
+// /setclientid <32 characters> — use this SoundCloud client_id instead of the
+// scraped one (lib/soundcloud.js), e.g. while scraping is broken. The id is
+// public (every visitor of soundcloud.com gets it), so the message stays.
+export async function setClientId(text) {
+  const id = text.replace(/^\/setclientid(@\w+)?\s*/, '').trim();
+  if (!/^[a-zA-Z0-9]{32}$/.test(id)) return tell('Usage: /setclientid <the 32-character client_id>');
+  await setSetting('sc:client_id', id);
+  await tell('client_id saved ✅ — check it with /sc');
+}
+
+// The lists Telegram suggests after typing "/". Everyone sees the public
+// commands; the admin's own chat also lists the admin ones.
+const PUBLIC_COMMANDS = [
+  { command: 'start', description: 'شروع و منوی ربات' },
+  { command: 'help', description: 'راهنمای دانلود از ساندکلاد' },
+];
+const ADMIN_COMMANDS = [
+  ...PUBLIC_COMMANDS,
+  { command: 'stats', description: 'آمار کاربران و دانلودها' },
+  { command: 'sc', description: 'بررسی دسترسی به ساندکلاد (لینک اختیاری)' },
+  { command: 'setclientid', description: 'تنظیم دستی client_id ساندکلاد' },
+  { command: 'backup', description: 'بکاپ جدول‌ها (CSV)' },
+  { command: 'ping', description: 'ربات زنده است؟' },
+  { command: 'setcommands', description: 'به‌روزرسانی همین لیست' },
+];
+
+// Sends both lists to Telegram. Runs on every deploy (.github/workflows/deploy.yml
+// → endpoints/adminSyncCommands.js) and on the admin's /start, so the "/" menu
+// never waits for /setcommands. The admin's list needs a chat with the admin:
+// before their first /start it fails, and that is reported, not thrown.
+// → { public: true, admin: true | '<why not>' }
+export async function syncCommands() {
+  await api.setMyCommands({ commands: PUBLIC_COMMANDS });
+  try {
+    await api.setMyCommands({ scope: { type: 'chat', chat_id: ADMIN_ID }, commands: ADMIN_COMMANDS });
+    return { public: true, admin: true };
+  } catch (e) {
+    if (!(e instanceof BotApiError)) throw e;
+    return { public: true, admin: `${e.description} (the admin hasn't started the bot yet?)` };
+  }
+}
+
+// /setcommands — the same, by hand.
 export async function setCommands() {
-  const everyone = [{ command: 'start', description: 'شروع و منوی ربات' }];
-  await api.setMyCommands({ commands: everyone });
-  await api.setMyCommands({
-    scope: { type: 'chat', chat_id: ADMIN_ID },
-    commands: [
-      ...everyone,
-      { command: 'stats', description: 'آمار کاربران' },
-      { command: 'backup', description: 'بکاپ جدول‌ها (CSV)' },
-      { command: 'setcommands', description: 'به‌روزرسانی همین لیست' },
-    ],
-  });
-  await tell('Commands updated ✅');
+  const r = await syncCommands();
+  await tell(r.admin === true ? 'Commands updated ✅' : `Public commands updated ✅\nAdmin commands: ${r.admin}`);
 }
