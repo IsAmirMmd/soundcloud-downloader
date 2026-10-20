@@ -188,4 +188,8 @@ docs/                               ← ARCHITECTURE.md، SOUNDCLOUD.md، tgclou
 5. گروه‌ها (وقتی ربات منشن شود).
 6. انتخاب کیفیت و فرمت.
 
+## توسعه‌دهنده
+
+توسعه‌دهنده‌ی اصلی: [@isAmirMmd](https://t.me/isAmirMmd) (تلگرام) · [IsAmirMmd](https://github.com/IsAmirMmd) (گیت‌هاب)
+
 </div>

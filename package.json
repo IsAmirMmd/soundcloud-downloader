@@ -1,6 +1,7 @@
 {
   "name": "soundcloud-downloader",
   "private": true,
+  "author": "IsAmirMmd (https://t.me/isAmirMmd)",
   "scripts": {
     "deploy": "tgcloud push",
     "status": "tgcloud status",

@@ -3,7 +3,7 @@
 // Copy this shape for any multi-screen menu (settings, help, prices…).
 
 import { api } from 'sdk';
-import { MINI_APP_URL } from './config.js';
+import { MINI_APP_URL, DEVELOPER } from './config.js';
 import { esc } from './html.js';
 import { botUsername } from './bot.js';
 
@@ -44,6 +44,8 @@ const SCREENS = {
       '• تلگرام فایل بزرگ‌تر از ۵۰ مگابایت رو از ربات قبول نمی‌کنه (حدود ۵۰ دقیقه).',
       '• ترک‌های SoundCloud Go+ فقط پیش‌نمایش ۳۰ ثانیه‌ای عمومی دارن.',
       '• بعضی ترک‌ها فقط به‌صورت رمزگذاری‌شده پخش می‌شن و قابل دانلود نیستن.',
+      '',
+      `👨‍💻 توسعه‌دهنده: <a href="https://t.me/${esc(DEVELOPER)}">@${esc(DEVELOPER)}</a>`,
     ].join('\n'),
     parse_mode: 'HTML',
     link_preview_options: { is_disabled: true },

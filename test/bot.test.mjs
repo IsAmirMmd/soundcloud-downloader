@@ -35,6 +35,7 @@ test('menu buttons edit the message into the next screen', async () => {
   assert.equal(edit.method, 'editMessageText');
   assert.equal(edit.params.message_id, 7);
   assert.match(edit.params.text, /راهنما/);
+  assert.match(edit.params.text, /توسعه‌دهنده: <a href="https:\/\/t\.me\/isAmirMmd">@isAmirMmd<\/a>/);
 });
 
 test('admin commands answer the admin only', async () => {

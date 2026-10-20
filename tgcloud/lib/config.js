@@ -7,6 +7,9 @@
 // change it there too.
 export const ADMIN_ID = 199419831;
 
+// The main developer's Telegram username (without @): credited at the end of /help.
+export const DEVELOPER = 'isAmirMmd';
+
 // The Mini App's address — `npx tgcloud push` prints it (https://app<app id>.tgcloud.ai/).
 // Empty: no "open the app" buttons.
 export const MINI_APP_URL = '';
