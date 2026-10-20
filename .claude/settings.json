@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "serverless-tg-bot": {
+      "source": {
+        "source": "github",
+        "repo": "IsAmirMmd/serverless-tg-bot"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "tgcloud-kit@serverless-tg-bot": true
+  }
+}

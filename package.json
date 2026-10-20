@@ -1,0 +1,22 @@
+{
+  "name": "soundcloud-downloader",
+  "private": true,
+  "scripts": {
+    "deploy": "tgcloud push",
+    "status": "tgcloud status",
+    "run": "tgcloud run",
+    "test": "node --import ./test/sdk/register.mjs --test \"test/**/*.test.mjs\"",
+    "login": "tgcloud login",
+    "migrate": "tgcloud migrate",
+    "sql": "node scripts/sql.mjs",
+    "pull": "tgcloud pull",
+    "webhook": "tgcloud webhook"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "devDependencies": {
+    "@tgcloud/cli": "^0.2.0"
+  }
+}

@@ -1,0 +1,31 @@
+# Scheduled jobs. Telegram Serverless has no scheduler, so GitHub Actions runs
+# an admin command in the cloud: `tgcloud run` executes the repo's modules
+# against the bot's real database and Bot API, as if the admin had sent it.
+# Add one job per command; the ids are ADMIN_ID from tgcloud/lib/config.js.
+# Needs the repository secret TGCLOUD_TOKEN. Cron is UTC (Tehran = UTC+3:30).
+name: Scheduled jobs
+
+on:
+  schedule:
+    - cron: '0 */8 * * *'   # every 8 hours
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.TGCLOUD_TOKEN != ''
+      - uses: actions/setup-node@v4
+        if: env.TGCLOUD_TOKEN != ''
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: env.TGCLOUD_TOKEN != ''
+      - if: env.TGCLOUD_TOKEN != ''
+        run: |
+          mkdir -p .tgcloud
+          npx tgcloud run handlers/message '{ text: "/backup", from: { id: 199419831 }, chat: { id: 199419831, type: "private" } }'
