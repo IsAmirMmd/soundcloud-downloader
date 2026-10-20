@@ -40,9 +40,10 @@ test('a link comes back as audio: status, upload with name, cover and caption; f
   assert.equal(action.method, 'sendChatAction');
   assert.equal(audio.method, 'sendAudio');
   assert.equal(audio.params.chat_id, USER);
-  assert.equal(audio.params.audio.name, 'artist - Track 1.mp3');
-  assert.equal(audio.params.audio.type, 'audio/mpeg');
-  assert.equal(asText(audio.params.audio.data), '<t1.mp3>');
+  // A track of today: AAC only, joined into one .m4a.
+  assert.equal(audio.params.audio.name, 'artist - Track 1.m4a');
+  assert.equal(audio.params.audio.type, 'audio/mp4');
+  assert.equal(asText(audio.params.audio.data), '<t1/aac_160k/init.mp4><0/10/t1.m4s><10/20/t1.m4s><t1/aac_160k/seg3.m4s>');
   assert.equal(asText(audio.params.thumbnail.data), '<artworks-1-t300x300.jpg>');
   assert.deepEqual([audio.params.title, audio.params.performer, audio.params.duration], ['Track 1', 'artist', 180]);
   assert.match(audio.params.caption, /href="https:\/\/soundcloud\.com\/artist\/track-1".*@test_bot/);
@@ -53,7 +54,7 @@ test('a link comes back as audio: status, upload with name, cover and caption; f
   const t = row('SELECT * FROM tracks WHERE track_id = 1');
   assert.equal(t.file_id, issued[0]);
   assert.equal(t.sends, 1);
-  assert.equal(t.format, 'progressive audio/mpeg');
+  assert.equal(t.format, 'hls audio/mp4 (aac_160k)');
   assert.deepEqual(rows('SELECT user_id, url, track_id, status, error FROM downloads'),
     [{ user_id: USER, url: LINK, track_id: 1, status: 'sent', error: null }]);
 });
@@ -69,7 +70,7 @@ test('the same track again is sent by its file_id, without downloading', async (
   await message(msg(OTHER, LINK), {});
   const audio = take().find((c) => c.method === 'sendAudio');
   assert.equal(audio.params.audio, fileId);
-  assert.ok(!asked.some((u) => u.includes('sndcdn.com/t1') || u.includes('/stream/')), 'no stream fetched');
+  assert.ok(!asked.some((u) => u.includes('/stream/') || u.includes('playlist.m3u8')), 'no stream fetched');
   assert.equal(row('SELECT sends FROM tracks WHERE track_id = 1').sends, 2);
   assert.equal(row('SELECT status FROM downloads WHERE user_id = ?', OTHER).status, 'cached');
 });
@@ -148,7 +149,8 @@ test('the probe: every step from the cloud, for the admin only', async () => {
   const report = await adminProbe({}, ctxOf(ADMIN_ID));
   assert.equal(report.ok, true);
   assert.deepEqual(report.steps.map((s) => s.name), ['client_id (scraped)', 'resolve', 'stream', 'download']);
-  assert.match(report.steps.at(-1).value, /^8 bytes \(progressive audio\/mpeg\)$/);
+  assert.equal(report.steps.find((s) => s.name === 'stream').value, 'aac_160k hls audio/mp4');
+  assert.match(report.steps.at(-1).value, /^\d+ bytes \(hls audio\/mp4 \(aac_160k\)\)$/);
   await assert.rejects(adminProbe({}, ctxOf(USER)), (e) => e.parameters?.code === 'FORBIDDEN');
 
   await message(msg(ADMIN_ID, '/sc https://soundcloud.com/a/missing'), {});

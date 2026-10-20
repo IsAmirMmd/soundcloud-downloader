@@ -34,10 +34,10 @@ export async function probe(url = PROBE_TRACK_URL, { download = true } = {}) {
   const track = await step(report, 'resolve', () => getTrack(link));
   if (!track) return report;
   report.steps.at(-1).value = `track ${track.id}`;
-  report.track ={ id: track.id, title: track.title, artist: track.artist, duration: track.duration, policy: track.policy };
-  report.formats = track.transcodings.map((t) => `${t.format?.protocol} ${t.format?.mime_type}${t.snipped ? ' (snipped)' : ''}`);
+  report.track = { id: track.id, title: track.title, artist: track.artist, duration: track.duration, policy: track.policy };
+  report.formats = track.transcodings.map((t) => `${t.preset} ${t.format?.protocol} ${t.format?.mime_type}${t.snipped ? ' (snipped)' : ''}`);
   const picked = pickTranscoding(track.transcodings);
-  report.steps.push({ name: 'stream', ok: Boolean(picked), ms: 0, value: picked ? `${picked.format.protocol} ${picked.format.mime}` : 'none usable' });
+  report.steps.push({ name: 'stream', ok: Boolean(picked), ms: 0, value: picked ? `${picked.transcoding.preset} ${picked.format.protocol} ${picked.format.mime}` : 'none usable' });
   if (!picked) { report.ok = false; return report; }
   if (download) {
     const file = await step(report, 'download', () => downloadAudio(track));

@@ -116,7 +116,7 @@ export async function scrapeClientId() {
   const page = await getText(`${SITE}/`);
   const inPage = clientIdIn(page);
   if (inPage) return inPage;
-  const scripts = [...page.matchAll(/<script[^>]+src="(https:\/\/[^"]*sndcdn\.com\/[^"]+\.js)"/g)].map((m) => m[1]);
+  const scripts = [...page.matchAll(/<script[^>]+src="(https:\/\/[^"]+\.js)"/g)].map((m) => m[1]);
   for (const src of scripts.reverse()) {
     const id = clientIdIn(await getText(src).catch(() => ''));
     if (id) return id;
@@ -188,36 +188,52 @@ function trackOf(t) {
     policy: t.policy ?? null,                                            // ALLOW | MONETIZE | SNIP | BLOCK
     transcodings: t.media?.transcodings ?? [],
     trackAuthorization: t.track_authorization ?? null,
+    secretToken: t.secret_token ?? null,                                 // a private track's, needed for its streams
   };
 }
 
-// The track a link points at. Share links are followed first.
+// The track a link points at. Share links are followed first. A private
+// track's secret comes from its link (…/<track>/s-<secret>) when resolve
+// doesn't repeat it.
 export async function getTrack(link) {
   const { url, short } = typeof link === 'string' ? { url: link, short: false } : link;
-  const found = await resolve(short ? await expand(url) : url);
+  const full = short ? await expand(url) : url;
+  const found = await resolve(full);
   if (found?.kind !== 'track') throw new SoundcloudError('NOT_TRACK', found?.kind ?? 'nothing');
-  return trackOf(found);
+  const track = trackOf(found);
+  track.secretToken ??= /^https:\/\/soundcloud\.com\/[^/]+\/[^/]+\/(s-[A-Za-z0-9_-]+)$/.exec(full)?.[1] ?? null;
+  return track;
 }
 
 // ---------- streams ----------
 
-// The streams the bot can turn into a file, best first: one MP3 file; MP3
-// segments (they join into one MP3); AAC in fragmented MP4 (init + segments
-// join into one .m4a). Encrypted streams (ctr-/cbc-encrypted-hls) are DRM and
-// never used. A snipped stream is a 30-second preview.
+// The streams the bot can turn into a file, best first. SoundCloud removed
+// progressive MP3 in August 2026 and keeps HLS MP3 only on tracks not yet
+// moved to AAC; most tracks now have just `aac_160k` / `aac_96k` (AAC in
+// fragmented MP4: init + segments join into one .m4a) and `abr_sq`. MP3 still
+// goes first where it exists: every Telegram client plays it as music.
 const FORMATS = [
   { protocol: 'progressive', mime: 'audio/mpeg', ext: 'mp3', type: 'audio/mpeg' },
   { protocol: 'hls', mime: 'audio/mpeg', ext: 'mp3', type: 'audio/mpeg' },
   { protocol: 'hls', mime: 'audio/mp4', ext: 'm4a', type: 'audio/mp4' },
 ];
 
-// → { transcoding, format } for the best usable stream, or null.
+// Never used: previews (`snipped`, or a /preview/ URL: Go+ tracks), the
+// adaptive `abr_*` presets (broken: often 404; yt-dlp skips them too), and DRM
+// (ctr-/cbc-encrypted-hls, encrypted-hls), which no protocol in FORMATS matches.
+const usable = (t) => !t.snipped && !/\/preview\//.test(t.url ?? '') && !/^abr/.test(t.preset ?? '');
+
+// "aac_160k" → 160; 0 when the preset doesn't say.
+const kbps = (t) => Number(/_(\d+)k$/.exec(t.preset ?? '')?.[1] ?? 0);
+
+// → { transcoding, format } for the best usable stream, or null: the first
+// format in FORMATS the track has, at its highest bitrate.
 export function pickTranscoding(transcodings) {
   for (const format of FORMATS) {
-    const transcoding = transcodings.find((t) => !t.snipped
+    const matches = transcodings.filter((t) => usable(t)
       && t.format?.protocol === format.protocol
       && (t.format?.mime_type ?? '').startsWith(format.mime));
-    if (transcoding) return { transcoding, format };
+    if (matches.length) return { transcoding: matches.reduce((a, b) => (kbps(b) > kbps(a) ? b : a)), format };
   }
   return null;
 }
@@ -230,11 +246,15 @@ function absolute(ref, base) {
   return base.replace(/[?#].*$/, '').replace(/[^/]*$/, '') + ref;
 }
 
-// An HLS media playlist → { map, segments }: the init segment (fMP4), if
-// any, and the segments in order, as absolute URLs. Encrypted → NO_STREAM.
+// An HLS playlist → { map, segments, variants }, all URLs absolute:
+// - a media playlist: the init segment (fMP4) if any, and the segments in order;
+// - a master playlist: its variants, { url, bandwidth }, and no segments.
+// Encrypted → NO_STREAM.
 export function parseM3u8(text, base) {
   let map = null;
+  let variant = null;
   const segments = [];
+  const variants = [];
   for (const raw of String(text).split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
@@ -242,11 +262,26 @@ export function parseM3u8(text, base) {
     if (line.startsWith('#EXT-X-MAP:')) {
       const uri = /URI="([^"]+)"/.exec(line)?.[1];
       if (uri) map = absolute(uri, base);
+    } else if (line.startsWith('#EXT-X-STREAM-INF:')) {
+      variant = { bandwidth: Number(/BANDWIDTH=(\d+)/.exec(line)?.[1] ?? 0) };
     } else if (!line.startsWith('#')) {
-      segments.push(absolute(line, base));
+      if (variant) variants.push({ ...variant, url: absolute(line, base) });
+      else segments.push(absolute(line, base));
+      variant = null;
     }
   }
-  return { map, segments };
+  return { map, segments, variants };
+}
+
+// The media playlist at `url`, following a master playlist to its
+// highest-bandwidth variant (once).
+async function mediaPlaylist(url) {
+  const playlist = parseM3u8(await getText(url), url);
+  if (!playlist.variants.length) return playlist;
+  const best = playlist.variants.reduce((a, b) => (b.bandwidth > a.bandwidth ? b : a));
+  const media = parseM3u8(await getText(best.url), best.url);
+  if (media.variants.length) throw new SoundcloudError('NO_STREAM', 'nested HLS master playlists');
+  return media;
 }
 
 function concat(chunks, total) {
@@ -256,29 +291,46 @@ function concat(chunks, total) {
   return out;
 }
 
-// Downloads `urls` one after another into one byte array, stopping with
-// TOO_BIG as soon as it passes `limit`.
-async function download(urls, limit) {
+// One file's bytes; TOO_BIG as soon as it passes `limit`.
+async function fetchBytes(url, limit) {
+  let res;
+  try {
+    res = await fetch(url, { headers: HEADERS });
+  } catch (e) {
+    throw new SoundcloudError('UNREACHABLE', `${url.slice(0, 80)}: ${e.message}`);
+  }
+  if (!res.ok) throw new SoundcloudError(res.status === 403 ? 'BLOCKED' : 'UNREACHABLE', `${url.slice(0, 80)}: HTTP ${res.status}`);
+  const length = Number(res.headers?.get?.('content-length') ?? 0);
+  if (length > limit) throw new SoundcloudError('TOO_BIG', `${length} bytes`);
   const chunks = [];
   let total = 0;
-  for (const url of urls) {
-    let res;
-    try {
-      res = await fetch(url, { headers: HEADERS });
-    } catch (e) {
-      throw new SoundcloudError('UNREACHABLE', `${url.slice(0, 80)}: ${e.message}`);
-    }
-    if (!res.ok) throw new SoundcloudError(res.status === 403 ? 'BLOCKED' : 'UNREACHABLE', `${url.slice(0, 80)}: HTTP ${res.status}`);
-    const length = Number(res.headers?.get?.('content-length') ?? 0);
-    if (length && total + length > limit) throw new SoundcloudError('TOO_BIG', `${total + length} bytes`);
-    for await (const chunk of res.body) {
-      const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
-      total += bytes.length;
-      if (total > limit) throw new SoundcloudError('TOO_BIG', `over ${limit} bytes`);
-      chunks.push(bytes);
-    }
+  for await (const chunk of res.body) {
+    const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+    total += bytes.length;
+    if (total > limit) throw new SoundcloudError('TOO_BIG', `over ${limit} bytes`);
+    chunks.push(bytes);
   }
   return concat(chunks, total);
+}
+
+// How many HLS segments are fetched at once. A 4-minute track is dozens of
+// segments; one after another they would take most of the handler's run.
+const PARALLEL = 4;
+
+// `urls` into one byte array, in order, PARALLEL at a time; TOO_BIG as soon
+// as the total passes `limit`.
+async function download(urls, limit) {
+  const parts = [];
+  let total = 0;
+  for (let i = 0; i < urls.length; i += PARALLEL) {
+    const batch = await Promise.all(urls.slice(i, i + PARALLEL).map((url) => fetchBytes(url, limit - total)));
+    for (const bytes of batch) {
+      total += bytes.length;
+      if (total > limit) throw new SoundcloudError('TOO_BIG', `over ${limit} bytes`);
+      parts.push(bytes);
+    }
+  }
+  return concat(parts, total);
 }
 
 // The track as one audio file → { bytes, ext, type, format }. Throws a
@@ -287,24 +339,32 @@ export async function downloadAudio(track, { limit = MAX_AUDIO_BYTES } = {}) {
   if (track.policy === 'BLOCK') throw new SoundcloudError('BLOCKED', `policy ${track.policy}`);
   const picked = pickTranscoding(track.transcodings);
   if (!picked) {
-    if (track.policy === 'SNIP' || track.transcodings.some((t) => t.snipped)) throw new SoundcloudError('PREVIEW_ONLY');
-    const formats = track.transcodings.map((t) => `${t.format?.protocol} ${t.format?.mime_type}`).join(', ');
+    if (track.policy === 'SNIP' || track.transcodings.some((t) => t.snipped || /\/preview\//.test(t.url ?? ''))) {
+      throw new SoundcloudError('PREVIEW_ONLY');
+    }
+    const formats = track.transcodings.map((t) => `${t.preset} ${t.format?.protocol} ${t.format?.mime_type}`).join(', ');
     throw new SoundcloudError('NO_STREAM', formats || 'no transcodings');
   }
   if (track.duration > MAX_DURATION_SECONDS) throw new SoundcloudError('TOO_LONG', `${track.duration} s`);
 
   const { transcoding, format } = picked;
-  const stream = await apiGet(transcoding.url, { track_authorization: track.trackAuthorization });
+  const stream = await apiGet(transcoding.url, {
+    track_authorization: track.trackAuthorization,
+    secret_token: track.secretToken,
+  });
   if (!stream?.url) throw new SoundcloudError('UNREACHABLE', 'no stream url');
+  // A full-looking stream that turns out to be the 30-second one.
+  if (/\/(?:preview|playlist)\/0\/30\//.test(stream.url)) throw new SoundcloudError('PREVIEW_ONLY', stream.url.slice(0, 80));
 
   let urls = [stream.url];
   if (format.protocol === 'hls') {
-    const playlist = parseM3u8(await getText(stream.url), stream.url);
-    urls = [...(playlist.map ? [playlist.map] : []), ...playlist.segments];
+    const playlist = await mediaPlaylist(stream.url);
     if (!playlist.segments.length) throw new SoundcloudError('NO_STREAM', 'empty HLS playlist');
+    urls = [...(playlist.map ? [playlist.map] : []), ...playlist.segments];
   }
   const bytes = await download(urls, limit);
-  return { bytes, ext: format.ext, type: format.type, format: `${format.protocol} ${format.type}` };
+  const preset = transcoding.preset ? ` (${transcoding.preset})` : '';
+  return { bytes, ext: format.ext, type: format.type, format: `${format.protocol} ${format.type}${preset}` };
 }
 
 // The cover as a JPEG small enough for a Telegram thumbnail (≤ 320 px,

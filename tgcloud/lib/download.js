@@ -30,7 +30,7 @@ const ERRORS = {
   INTERNAL: '⚠️ یه مشکلی پیش اومد. کمی بعد دوباره امتحان کن.',
 };
 
-// "Artist - Title.mp3", without characters file systems refuse.
+// "Artist - Title.m4a" (or .mp3), without characters file systems refuse.
 export function fileName(track, ext) {
   const base = [track.artist, track.title].filter(Boolean).join(' - ')
     .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);

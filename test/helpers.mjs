@@ -59,16 +59,25 @@ export const ctxOf = (id) => ({ initData: { user: user(id) } });
 
 export const CLIENT_ID = 'a'.repeat(32);
 
+// What api-v2 lists in media.transcodings, by the name a test uses. Since
+// SoundCloud dropped progressive MP3 (August 2026) most tracks have only
+// aac_160k, aac_96k and abr_sq; HLS MP3 is left on tracks not moved yet.
+const AAC = 'audio/mp4; codecs="mp4a.40.2"';
 const STREAMS = {
-  progressive: { protocol: 'progressive', mime_type: 'audio/mpeg' },
-  'hls-mp3': { protocol: 'hls', mime_type: 'audio/mpeg' },
-  'hls-aac': { protocol: 'hls', mime_type: 'audio/mp4; codecs="mp4a.40.2"' },
-  'hls-opus': { protocol: 'hls', mime_type: 'audio/ogg; codecs="opus"' },
-  encrypted: { protocol: 'ctr-encrypted-hls', mime_type: 'audio/mp4; codecs="mp4a.40.2"' },
+  progressive: { preset: 'mp3_0_0', protocol: 'progressive', mime_type: 'audio/mpeg' },
+  'hls-mp3': { preset: 'mp3_1_0', protocol: 'hls', mime_type: 'audio/mpeg' },
+  aac_160k: { preset: 'aac_160k', protocol: 'hls', mime_type: AAC },
+  aac_96k: { preset: 'aac_96k', protocol: 'hls', mime_type: AAC },
+  abr_sq: { preset: 'abr_sq', protocol: 'hls', mime_type: AAC },              // its stream URL 404s
+  opus: { preset: 'opus_0_0', protocol: 'hls', mime_type: 'audio/ogg; codecs="opus"' },
+  drm: { preset: 'aac_160k', protocol: 'ctr-encrypted-hls', mime_type: AAC },
+  aac_master: { preset: 'aac_256k', protocol: 'hls', mime_type: AAC },        // a master playlist
+  aac_preview: { preset: 'aac_160k', protocol: 'hls', mime_type: AAC },       // the stream is the 30-second one
 };
 
-// A track as api-v2's /resolve returns it. `streams` are keys of STREAMS.
-export function scTrack(id, { streams = ['hls-aac', 'hls-mp3', 'progressive'], policy = 'ALLOW', seconds = 180, snipped = false, ...extra } = {}) {
+// A track as api-v2's /resolve returns it. `streams` are keys of STREAMS;
+// `secret`: a private track's secret_token, which its streams then require.
+export function scTrack(id, { streams = ['aac_160k', 'aac_96k', 'abr_sq'], policy = 'ALLOW', seconds = 180, snipped = false, secret = null, ...extra } = {}) {
   return {
     kind: 'track',
     id,
@@ -80,12 +89,13 @@ export function scTrack(id, { streams = ['hls-aac', 'hls-mp3', 'progressive'], p
     artwork_url: `https://i1.sndcdn.com/artworks-${id}-large.jpg`,
     policy,
     track_authorization: `auth-${id}`,
+    ...(secret ? { secret_token: secret } : {}),
     media: {
       transcodings: streams.map((s) => ({
         url: `https://api-v2.soundcloud.com/media/soundcloud:tracks:${id}/${s}/stream/${STREAMS[s].protocol}`,
-        preset: s,
+        preset: STREAMS[s].preset,
         snipped,
-        format: STREAMS[s],
+        format: { protocol: STREAMS[s].protocol, mime_type: STREAMS[s].mime_type },
         quality: 'sq',
       })),
     },
@@ -151,34 +161,47 @@ export function soundcloud({ tracks = {}, short = {}, clientId = CLIENT_ID, page
       }
       const m = /\/media\/soundcloud:tracks:(\d+)\/([\w-]+)\/stream\/([\w-]+)$/.exec(base);
       if (m) {
-        if (params.track_authorization !== `auth-${m[1]}`) return reply(403, '{}');
-        return reply(200, m[3] === 'progressive'
-          ? { url: `https://cf-media.sndcdn.com/t${m[1]}.mp3?Policy=p&Signature=s` }
-          : { url: `https://cf-hls-media.sndcdn.com/playlist/t${m[1]}/${m[2]}/playlist.m3u8?Policy=p` });
+        const [, id, key, protocol] = m;
+        const track = Object.values(tracks).find((t) => t.id === Number(id));
+        if (params.track_authorization !== `auth-${id}`) return reply(403, '{}');
+        if (track?.secret_token && params.secret_token !== track.secret_token) return reply(404, '{}');
+        if (key === 'abr_sq') return reply(404, '{}');
+        if (protocol === 'progressive') return reply(200, { url: `https://cf-media.sndcdn.com/t${id}.mp3?Policy=p&Signature=s` });
+        if (key === 'aac_preview') return reply(200, { url: `https://cf-preview-media.sndcdn.com/playlist/0/30/t${id}/playlist.m3u8?expires=1` });
+        const host = key === 'hls-mp3' ? 'https://cf-hls-media.sndcdn.com/playlist' : 'https://playback.media-streaming.soundcloud.cloud';
+        return reply(200, { url: `${host}/t${id}/${key}/playlist.m3u8?expires=1` });
       }
     }
 
     const media = /^https:\/\/cf-media\.sndcdn\.com\/(t\d+\.mp3)$/.exec(base);
     if (media) return reply(200, fakeBytes(media[1]), { headers: { 'content-length': String(fakeBytes(media[1]).length) } });
-    const playlist = /^https:\/\/cf-hls-media\.sndcdn\.com\/playlist\/(t\d+)\/([\w-]+)\/playlist\.m3u8$/.exec(base);
+    const HLS = /^(https:\/\/(?:cf-hls-media\.sndcdn\.com\/playlist|playback\.media-streaming\.soundcloud\.cloud))\/(t\d+)\/([\w-]+)(\/v\d)?\/playlist\.m3u8$/;
+    const playlist = HLS.exec(base);
     if (playlist) {
-      const [, t, s] = playlist;
-      const ext = s === 'hls-aac' ? 'm4s' : 'mp3';
+      const [, host, t, key, variant] = playlist;
+      if (key === 'aac_master' && !variant) {
+        return reply(200, '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=96000,CODECS="mp4a.40.2"\nv1/playlist.m3u8\n' +
+          '#EXT-X-STREAM-INF:BANDWIDTH=256000,CODECS="mp4a.40.2"\nv2/playlist.m3u8\n');
+      }
+      const origin = /^https:\/\/[^/]+/.exec(host)[0];
+      const ext = key === 'hls-mp3' ? 'mp3' : 'm4s';
       return reply(200, [
         '#EXTM3U',
         '#EXT-X-VERSION:6',
         '#EXT-X-TARGETDURATION:10',
-        ...(s === 'hls-aac' ? ['#EXT-X-MAP:URI="init.mp4"'] : []),
+        ...(ext === 'm4s' ? ['#EXT-X-MAP:URI="init.mp4"'] : []),
         '#EXTINF:10.0,',
-        `https://cf-hls-media.sndcdn.com/media/0/10/${t}.${ext}?Policy=p`,   // absolute
+        `${origin}/media/0/10/${t}.${ext}?Policy=p`,   // absolute
         '#EXTINF:10.0,',
-        `/media/10/20/${t}.${ext}?Policy=p`,                                // from the host's root
+        `/media/10/20/${t}.${ext}?Policy=p`,          // from the host's root
         '#EXTINF:5.0,',
-        `seg3.${ext}`,                                                     // next to the playlist
+        `seg3.${ext}`,                               // next to the playlist
         '#EXT-X-ENDLIST',
       ].join('\n'));
     }
-    if (/^https:\/\/cf-hls-media\.sndcdn\.com\//.test(base)) return reply(200, fakeBytes(base.split('/').slice(-3).join('/')));
+    if (/^https:\/\/(cf-hls-media\.sndcdn\.com|playback\.media-streaming\.soundcloud\.cloud)\//.test(base)) {
+      return reply(200, fakeBytes(base.split('/').slice(-3).join('/')));
+    }
     const art = /^https:\/\/i1\.sndcdn\.com\/((?:artworks|avatars)-\d+-t300x300\.jpg)$/.exec(base);
     if (art) return reply(200, fakeBytes(art[1]));
     throw new Error(`unexpected fetch ${url}`);

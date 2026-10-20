@@ -3,7 +3,7 @@
 
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { fresh, soundcloud, scTrack, asText, row, exec, CLIENT_ID } from './helpers.mjs';
+import { fresh, soundcloud, scTrack, asText, row, exec, mockFetch, CLIENT_ID } from './helpers.mjs';
 import {
   findSoundcloudUrl, clientIdIn, clientId, getTrack, pickTranscoding, parseM3u8, downloadAudio, artwork, SoundcloudError,
 } from '../tgcloud/lib/soundcloud.js';
@@ -86,56 +86,117 @@ test('getTrack: the fields the bot uses; share links followed; NOT_FOUND and NOT
   await assert.rejects(getTrack('https://soundcloud.com/artist/sets/album'), (e) => isCode('NOT_TRACK')(e) && e.detail === 'playlist');
 });
 
-test('pickTranscoding: one MP3 file, then MP3 segments, then AAC; never DRM, opus or previews', () => {
+test('pickTranscoding: MP3 where it is left, else AAC at its best bitrate; never abr, DRM, opus or previews', () => {
   const pick = (streams, opts) => {
     const p = pickTranscoding(scTrack(1, { streams, ...opts }).media.transcodings);
-    return p && `${p.format.protocol} ${p.format.ext}`;
+    return p && `${p.transcoding.preset} ${p.format.protocol} ${p.format.ext}`;
   };
-  assert.equal(pick(['hls-aac', 'hls-mp3', 'progressive']), 'progressive mp3');
-  assert.equal(pick(['hls-aac', 'hls-mp3']), 'hls mp3');
-  assert.equal(pick(['encrypted', 'hls-aac']), 'hls m4a');
-  assert.equal(pick(['encrypted', 'hls-opus']), null);
-  assert.equal(pick(['progressive'], { snipped: true }), null);
+  assert.equal(pick(['aac_160k', 'hls-mp3', 'progressive']), 'mp3_0_0 progressive mp3');
+  assert.equal(pick(['aac_160k', 'hls-mp3']), 'mp3_1_0 hls mp3');
+  // Today's usual track: the 160k AAC, whatever the order, never abr_sq.
+  assert.equal(pick(['abr_sq', 'aac_96k', 'aac_160k']), 'aac_160k hls m4a');
+  assert.equal(pick(['abr_sq', 'aac_96k']), 'aac_96k hls m4a');
+  assert.equal(pick(['abr_sq']), null);
+  assert.equal(pick(['drm', 'opus']), null);
+  assert.equal(pick(['aac_160k'], { snipped: true }), null);
+  const preview = scTrack(1).media.transcodings.map((t) => ({ ...t, url: t.url.replace('/stream/', '/preview/') }));
+  assert.equal(pickTranscoding(preview), null);
 });
 
-test('parseM3u8: absolute, root and relative segments, the init map; encrypted refused', () => {
-  const base = 'https://cf-hls-media.sndcdn.com/playlist/t1/aac/playlist.m3u8?Policy=p';
+test('parseM3u8: absolute, root and relative segments, the init map; masters; encrypted refused', () => {
+  const base = 'https://playback.media-streaming.soundcloud.cloud/t1/aac/playlist.m3u8?expires=1';
   const list = '#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:10,\nhttps://x.sndcdn.com/a.m4s\n#EXTINF:10,\n/media/b.m4s\n#EXTINF:5,\nc.m4s\n#EXT-X-ENDLIST\n';
   assert.deepEqual(parseM3u8(list, base), {
-    map: 'https://cf-hls-media.sndcdn.com/playlist/t1/aac/init.mp4',
+    map: 'https://playback.media-streaming.soundcloud.cloud/t1/aac/init.mp4',
     segments: [
       'https://x.sndcdn.com/a.m4s',
-      'https://cf-hls-media.sndcdn.com/media/b.m4s',
-      'https://cf-hls-media.sndcdn.com/playlist/t1/aac/c.m4s',
+      'https://playback.media-streaming.soundcloud.cloud/media/b.m4s',
+      'https://playback.media-streaming.soundcloud.cloud/t1/aac/c.m4s',
+    ],
+    variants: [],
+  });
+  const master = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=96000\nlow/p.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=160000,CODECS="mp4a.40.2"\nhigh/p.m3u8\n';
+  assert.deepEqual(parseM3u8(master, base), {
+    map: null,
+    segments: [],
+    variants: [
+      { bandwidth: 96000, url: 'https://playback.media-streaming.soundcloud.cloud/t1/aac/low/p.m3u8' },
+      { bandwidth: 160000, url: 'https://playback.media-streaming.soundcloud.cloud/t1/aac/high/p.m3u8' },
     ],
   });
   assert.deepEqual(parseM3u8('#EXT-X-KEY:METHOD=NONE\nx.mp3', base).segments.length, 1);
   assert.throws(() => parseM3u8('#EXT-X-KEY:METHOD=SAMPLE-AES,URI="skd://k"\nx.m4s', base), isCode('NO_STREAM'));
 });
 
-test('downloadAudio: a progressive MP3 is one file', async () => {
-  soundcloud({ tracks: { [LINK]: scTrack(1) } });
+test('downloadAudio: a track of today — AAC 160k, init segment then the segments in order, abr_sq never asked', async () => {
+  const asked = soundcloud({ tracks: { [LINK]: scTrack(1, { streams: ['abr_sq', 'aac_96k', 'aac_160k'] }) } });
   const file = await downloadAudio(await getTrack(LINK));
-  assert.equal(asText(file.bytes), '<t1.mp3>');
-  assert.deepEqual([file.ext, file.type, file.format], ['mp3', 'audio/mpeg', 'progressive audio/mpeg']);
+  assert.equal(asText(file.bytes), '<t1/aac_160k/init.mp4><0/10/t1.m4s><10/20/t1.m4s><t1/aac_160k/seg3.m4s>');
+  assert.deepEqual([file.ext, file.type, file.format], ['m4a', 'audio/mp4', 'hls audio/mp4 (aac_160k)']);
+  assert.ok(!asked.some((u) => u.includes('/abr_sq/') || u.includes('/aac_96k/')));
 });
 
-test('downloadAudio: HLS segments are joined in order, after the init segment for AAC', async () => {
-  soundcloud({ tracks: { [LINK]: scTrack(1, { streams: ['hls-mp3'] }), 'https://soundcloud.com/artist/track-2': scTrack(2, { streams: ['encrypted', 'hls-aac'] }) } });
-  const mp3 = await downloadAudio(await getTrack(LINK));
-  assert.equal(asText(mp3.bytes), '<0/10/t1.mp3><10/20/t1.mp3><t1/hls-mp3/seg3.mp3>');
-  const aac = await downloadAudio(await getTrack('https://soundcloud.com/artist/track-2'));
-  assert.equal(asText(aac.bytes), '<t2/hls-aac/init.mp4><0/10/t2.m4s><10/20/t2.m4s><t2/hls-aac/seg3.m4s>');
-  assert.deepEqual([aac.ext, aac.type], ['m4a', 'audio/mp4']);
+test('downloadAudio: MP3 where SoundCloud still has it — one file, or HLS segments joined', async () => {
+  soundcloud({ tracks: {
+    [LINK]: scTrack(1, { streams: ['aac_160k', 'progressive'] }),
+    'https://soundcloud.com/artist/track-2': scTrack(2, { streams: ['aac_160k', 'hls-mp3'] }),
+  } });
+  const one = await downloadAudio(await getTrack(LINK));
+  assert.equal(asText(one.bytes), '<t1.mp3>');
+  assert.deepEqual([one.ext, one.type, one.format], ['mp3', 'audio/mpeg', 'progressive audio/mpeg (mp3_0_0)']);
+  const joined = await downloadAudio(await getTrack('https://soundcloud.com/artist/track-2'));
+  assert.equal(asText(joined.bytes), '<0/10/t2.mp3><10/20/t2.mp3><t2/hls-mp3/seg3.mp3>');
+});
+
+test('downloadAudio: a master playlist is followed to its best variant', async () => {
+  soundcloud({ tracks: { [LINK]: scTrack(1, { streams: ['aac_master'] }) } });
+  const file = await downloadAudio(await getTrack(LINK));
+  assert.equal(asText(file.bytes), '<aac_master/v2/init.mp4><0/10/t1.m4s><10/20/t1.m4s><aac_master/v2/seg3.m4s>');
+});
+
+test('downloadAudio: many segments come back in order, fetched a few at a time', async () => {
+  const urls = Array.from({ length: 11 }, (_, i) => `https://playback.media-streaming.soundcloud.cloud/t1/x/s${i}.m4s`);
+  const playlist = urls.map((u) => `#EXTINF:10,\n${u}`).join('\n');
+  let open = 0;
+  let most = 0;
+  mockFetch(async (url) => {
+    if (url.startsWith('https://soundcloud.com/')) return { ok: true, status: 200, text: async () => `{"hydratable":"apiClient","data":{"id":"${CLIENT_ID}"}}` };
+    if (url.startsWith('https://api-v2.soundcloud.com/media/')) return { ok: true, status: 200, text: async () => JSON.stringify({ url: 'https://playback.media-streaming.soundcloud.cloud/t1/x/playlist.m3u8' }) };
+    if (url.endsWith('playlist.m3u8')) return { ok: true, status: 200, text: async () => playlist };
+    open++;
+    most = Math.max(most, open);
+    // Later segments answer sooner: the order must still be the playlist's.
+    await new Promise((r) => setTimeout(r, 12 - Number(/s(\d+)/.exec(url)[1])));
+    open--;
+    const bytes = new Uint8Array(Buffer.from(`<${/s\d+/.exec(url)[0]}>`));
+    return { ok: true, status: 200, headers: { get: () => null }, body: (async function* () { yield bytes; })() };
+  });
+  const track = { id: 1, duration: 100, policy: 'ALLOW', trackAuthorization: 'a', transcodings: scTrack(1, { streams: ['aac_160k'] }).media.transcodings };
+  const file = await downloadAudio(track);
+  assert.equal(asText(file.bytes), urls.map((_, i) => `<s${i}>`).join(''));
+  assert.equal(most, 4);
+});
+
+test('downloadAudio: a private track sends its secret with the stream request', async () => {
+  const secretLink = 'https://soundcloud.com/artist/track-1/s-AbC12';
+  const asked = soundcloud({ tracks: { [secretLink]: scTrack(1, { secret: 's-AbC12' }) } });
+  const file = await downloadAudio(await getTrack(secretLink));
+  assert.equal(file.ext, 'm4a');
+  assert.ok(asked.some((u) => u.includes('/stream/') && u.includes('secret_token=s-AbC12')));
+
+  // A public track whose name starts with "s-" is not a secret link.
+  soundcloud({ tracks: { 'https://soundcloud.com/artist/s-club': scTrack(2) } });
+  assert.equal((await getTrack('https://soundcloud.com/artist/s-club')).secretToken, null);
 });
 
 test('downloadAudio: why not — blocked, preview only, DRM only, too long, too big', async () => {
   const tracks = {
     'https://soundcloud.com/a/blocked': scTrack(1, { policy: 'BLOCK' }),
     'https://soundcloud.com/a/goplus': scTrack(2, { policy: 'SNIP', snipped: true }),
-    'https://soundcloud.com/a/drm': scTrack(3, { streams: ['encrypted', 'hls-opus'] }),
+    'https://soundcloud.com/a/drm': scTrack(3, { streams: ['drm', 'opus', 'abr_sq'] }),
     'https://soundcloud.com/a/long': scTrack(4, { seconds: 3 * 3600 }),
     'https://soundcloud.com/a/ok': scTrack(5),
+    'https://soundcloud.com/a/sneaky': scTrack(6, { streams: ['aac_preview'] }),
   };
   const asked = soundcloud({ tracks });
   const fails = async (url, code, opts) => assert.rejects(downloadAudio(await getTrack(url), opts), isCode(code), url);
@@ -144,6 +205,9 @@ test('downloadAudio: why not — blocked, preview only, DRM only, too long, too 
   await fails('https://soundcloud.com/a/drm', 'NO_STREAM');
   await fails('https://soundcloud.com/a/long', 'TOO_LONG');
   assert.ok(!asked.some((u) => u.includes('/stream/')), 'nothing was streamed for a refused track');
+  // A stream that turns out to be the 30-second one is refused before downloading it.
+  await fails('https://soundcloud.com/a/sneaky', 'PREVIEW_ONLY');
+  assert.ok(!asked.some((u) => u.includes('cf-preview-media')));
   await fails('https://soundcloud.com/a/ok', 'TOO_BIG', { limit: 4 });
 });
 
