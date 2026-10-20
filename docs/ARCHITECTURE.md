@@ -31,8 +31,8 @@ in the cloud (`run`).
 tgcloud/                      ← deployed code; the only code the platform sees
   schema.js                   ← every table, as named exports
   handlers/                   ← one file per update type; thin routers
-    message.js                ← /start (+ deep links), /stop, admin commands, pending answers, SoundCloud links
-    callback_query.js         ← inline buttons, routed by callback_data prefix
+    message.js                ← /start (+ deep links), /stop, admin commands, pending answers (feedback, ✏️ 🎤 🖼), SoundCloud links
+    callback_query.js         ← inline buttons, routed by callback_data prefix (menu:, feedback, meta:)
     my_chat_member.js         ← the bot blocked/unblocked (private) or added/removed (groups, channels)
   endpoints/                  ← one file per Mini App call; thin: authorize → lib → JSON
     me.js                     ← who is calling (isAdmin)
@@ -43,6 +43,9 @@ tgcloud/                      ← deployed code; the only code the platform sees
     config.js                 ← constants (ADMIN_ID, size/duration limits, PROBE_TRACK_URL): no env vars exist
     soundcloud.js             ← SoundCloud api-v2: links, client_id (scraped, kept), resolve, streams, download
     download.js               ← the bot's job: link → status → audio (file_id cache in `tracks`), `downloads` log, stats
+    audio.js                  ← every audio message: sendAudio + caption + ✏️ 🎤 🖼 buttons + its `sent_audios` row, file names
+    metadata.js               ← ✏️ 🎤 🖼: ask, take the answer, send a copy with the new title / artist / cover
+    tags.js                   ← title, artist, cover written into the file: ID3v2.3 (mp3), iTunes ilst (fragmented m4a)
     probe.js                  ← /sc and adminProbe: is SoundCloud usable from Telegram's servers, step by step
     settings.js               ← key/value table: secrets, drafts, flags (and the SoundCloud client_id)
     users.js                  ← users table: /start tracking, blocked, /stop, pending_action
@@ -113,7 +116,8 @@ plus a workflow. A job therefore also works by hand: send the command, or
   3. `/stop`;
   4. admin commands;
   5. public commands;
-  6. the answer to a pending question;
+  6. the answer to a pending question (`feedback`; `meta:…` from ✏️ 🎤 🖼 →
+     `applyMetaEdit`, which lets a SoundCloud link through to step 7);
   7. a SoundCloud link in a private chat (`replyDownload`, lib/download.js);
   8. other text in a private chat gets a one-line hint about links;
   9. everything else (unknown commands, groups) is ignored, with no reply.

@@ -175,6 +175,10 @@ and the roadmap.
   the Telegram side in `tgcloud/lib/download.js`. Tests run on a fake
   SoundCloud (`soundcloud()` / `scTrack()` in `test/helpers.mjs`), never the
   network.
+- Every audio the bot sends goes through `sendAudioMessage` (`tgcloud/lib/audio.js`):
+  it adds the ✏️ 🎤 🖼 buttons and a `sent_audios` row, which
+  `tgcloud/lib/metadata.js` needs to re-upload a copy with a new title, artist or
+  cover (written into the file too, `tgcloud/lib/tags.js`).
 - Only the cloud can tell what SoundCloud does for the bot: `/sc [link]` (the
   admin), or `endpoints/adminProbe` via Actions → Run in cloud / `tgcloud run`.
 - Project skills for Claude Code are in `.claude/skills/`: **soundcloud-api**,
