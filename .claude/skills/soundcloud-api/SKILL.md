@@ -47,17 +47,25 @@ Paths like `/discover`, `/you/…` simply fail to resolve (NOT_FOUND).
 
 ## Choosing a stream
 
-`pickTranscoding` takes the first match in `FORMATS`, skipping `snipped`:
+Since August 2026 most tracks have only `aac_160k`, `aac_96k` (HLS, fMP4)
+and `abr_sq`; progressive MP3 is gone and HLS MP3 is left on unconverted
+tracks. `pickTranscoding` takes the first row of `FORMATS` the track has, at
+the highest bitrate its preset names (`aac_160k` › `aac_96k`):
 
-1. `progressive` + `audio/mpeg` → one GET, `.mp3`
+1. `progressive` + `audio/mpeg` → one GET, `.mp3` (rare now)
 2. `hls` + `audio/mpeg` → segments concatenated, `.mp3`
-3. `hls` + `audio/mp4` (AAC) → `#EXT-X-MAP` init + segments, `.m4a` (unconfirmed in Telegram clients)
+3. `hls` + `audio/mp4` (AAC) → `#EXT-X-MAP` init + segments, `.m4a` — the usual case
 
-Never: `ctr-encrypted-hls` / `cbc-encrypted-hls` (DRM; also any
-`#EXT-X-KEY` other than `METHOD=NONE` → NO_STREAM). Opus HLS is skipped for
-now. To change the order or add a format, edit `FORMATS`, extend
-`test/soundcloud.test.mjs` ("pickTranscoding…"), and the table in
-`docs/SOUNDCLOUD.md` §3.
+Never (`usable()`): `snipped` or `/preview/` transcodings, `abr_*` presets
+(adaptive, often 404 — yt-dlp skips them), DRM protocols
+(`ctr-`/`cbc-encrypted-hls`, `encrypted-hls`; any `#EXT-X-KEY` other than
+`METHOD=NONE` → NO_STREAM), Opus. After the stream request, a URL with
+`/0/30/` is the preview → PREVIEW_ONLY. A master playlist is followed to its
+best variant (`mediaPlaylist`). Segments are fetched `PARALLEL` (4) at a time,
+joined in order. A private track's streams need `secret_token`
+(`track.secretToken`, from resolve or the link's `/s-…`). To change the order
+or add a format, edit `FORMATS`, extend `test/soundcloud.test.mjs`
+("pickTranscoding…"), and the table in `docs/SOUNDCLOUD.md` §3.
 
 Before any download, `downloadAudio` refuses: `policy: BLOCK` → BLOCKED;
 only snipped streams or `policy: SNIP` → PREVIEW_ONLY; no usable format →
@@ -80,8 +88,10 @@ TOO_LONG. Nothing is fetched for a refused track — keep it that way.
 
 `soundcloud()` in `test/helpers.mjs` is the fake: extend it when you use a new
 endpoint (keep its URL shapes the real ones). `scTrack(id, { streams, policy,
-seconds, snipped })` builds tracks; `streams` keys: `progressive`, `hls-mp3`,
-`hls-aac`, `hls-opus`, `encrypted`.
+seconds, snipped, secret })` builds tracks (default streams: today's
+`aac_160k`, `aac_96k`, `abr_sq`); `streams` keys: `progressive`, `hls-mp3`,
+`aac_160k`, `aac_96k`, `abr_sq` (404s), `opus`, `drm`, `aac_master` (a master
+playlist), `aac_preview` (its stream URL is the 30-second one).
 
 The fake is what you *believe* SoundCloud does. Confirm from the cloud with
 the probe (`/sc <link>` or `endpoints/adminProbe { url }`), whose report lists

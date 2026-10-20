@@ -20,11 +20,13 @@ private chat: "https://on.soundcloud.com/AbC"
   ├─ sendChatAction upload_voice                                          │
   ├─ downloadAudio(track)                                                 │
   │    ├─ policy / duration checks (nothing downloaded when refused)      │
-  │    ├─ pickTranscoding → progressive MP3 › HLS MP3 › HLS AAC           │
-  │    ├─ GET <transcoding.url>?client_id&track_authorization → { url }   │
-  │    └─ one file, or the HLS segments joined (with the fMP4 init first) │
+  │    ├─ pickTranscoding → MP3 (if left) › AAC 160k › AAC 96k; no abr_sq │
+  │    ├─ GET <transcoding.url>?client_id&track_authorization[&secret_token] │
+  │    │     → { url } (a /0/30/ preview URL → PREVIEW_ONLY)              │
+  │    └─ one file, or the HLS segments joined, 4 fetched at a time       │
+  │       (master playlist → best variant; fMP4 init segment first)       │
   ├─ artwork(track) → 300×300 JPEG thumbnail (best effort)                │
-  ├─ sendAudio(InputFile "Artist - Title.mp3", title, performer, …)       │
+  ├─ sendAudio(InputFile "Artist - Title.m4a" or .mp3, title, performer…) │
   └─ tracks ← file_id ◀───────────────────────────────────────────────────┘
   downloads ← { status: sent | cached | failed, error, ms }; status message deleted
   (on failure: edited into the reason, ERRORS in lib/download.js)
@@ -56,35 +58,44 @@ its page to browsers.
 |---|---|
 | `GET https://soundcloud.com/` | HTML with the client_id |
 | `GET /resolve?url=<soundcloud.com link>` | the track / playlist / user (`kind`) |
-| `GET <transcoding.url>?track_authorization=…` | `{ url }`: the signed media or playlist URL (expires within minutes) |
-| `GET <media url>` / `<m3u8>` / segments | the audio, on `cf-media.sndcdn.com` / `cf-hls-media.sndcdn.com` |
+| `GET <transcoding.url>?track_authorization=…[&secret_token=s-…]` | `{ url }`: the signed media or playlist URL (expires within minutes); `secret_token` for a private track |
+| `GET <m3u8>` / segments (or one media URL) | the audio: AAC on `playback.media-streaming.soundcloud.cloud`, MP3 HLS on `cf-hls-media.sndcdn.com` (the code assumes no host) |
 | `GET <artwork_url with -t300x300>` | the cover, on `i1.sndcdn.com` |
 
 All with `client_id`. Fields the bot reads from a track: `id`, `title`,
 `publisher_metadata.artist` / `user.username`, `full_duration` (ms),
 `permalink_url`, `artwork_url`, `policy`, `track_authorization`,
-`media.transcodings[]` (`url`, `snipped`, `format.protocol`,
-`format.mime_type`).
+`secret_token` (or the `/s-…` of the link), `media.transcodings[]` (`url`,
+`preset`, `snipped`, `format.protocol`, `format.mime_type`).
 
 ## 3. Streams
 
-`media.transcodings` lists what a track can be played as. `pickTranscoding`
-takes the first usable one, in this order:
+`media.transcodings` lists what a track can be played as. SoundCloud is
+moving everything to AAC ([soundcloud/api#441](https://github.com/soundcloud/api/issues/441)):
+progressive MP3 was removed on 2026-08-12, HLS MP3 stays only on tracks not
+yet converted (some for up to a year), and Opus is gone. A track of today
+lists `aac_160k`, `aac_96k` (HLS, fMP4) and `abr_sq`. `pickTranscoding`
+takes the first row the track has, at the highest bitrate its preset names:
 
-| # | `format.protocol` | `format.mime_type` | Becomes |
-|---|---|---|---|
-| 1 | `progressive` | `audio/mpeg` | one GET → `.mp3` |
-| 2 | `hls` | `audio/mpeg` | the segments joined → `.mp3` (MP3 frames join cleanly) |
-| 3 | `hls` | `audio/mp4; codecs="mp4a.40.2"` | `#EXT-X-MAP` init + segments → fragmented `.m4a` |
-| — | `ctr-encrypted-hls`, `cbc-encrypted-hls` | any | never: DRM (`NO_STREAM`) |
-| — | `hls` | `audio/ogg; codecs="opus"` | not yet (Telegram's audio player wants MP3/M4A) |
-| — | any, `snipped: true` | | never: a 30-second Go+ preview (`PREVIEW_ONLY`) |
+| # | `format.protocol` | `format.mime_type` | `preset` | Becomes |
+|---|---|---|---|---|
+| 1 | `progressive` | `audio/mpeg` | `mp3_*` | one GET → `.mp3` (gone since 2026-08) |
+| 2 | `hls` | `audio/mpeg` | `mp3_*` | the segments joined → `.mp3` (MP3 frames join cleanly) |
+| 3 | `hls` | `audio/mp4; codecs="mp4a.40.2"` | `aac_160k` › `aac_96k` | `#EXT-X-MAP` init + segments → fragmented `.m4a` — **the usual case now** |
+| — | `hls` | AAC | `abr_*` | never: adaptive, often 404 (yt-dlp skips it as broken) |
+| — | `ctr-`/`cbc-encrypted-hls`, `encrypted-hls` | any | | never: DRM (`NO_STREAM`) |
+| — | any | | `snipped: true`, or a `/preview/` URL | never: a 30-second Go+ preview (`PREVIEW_ONLY`) |
 
-SoundCloud has been moving tracks from progressive MP3 to HLS AAC, and many to
-encrypted HLS only. Which formats tracks really have, seen from the cloud, is
-in `/sc`'s report (`📼 …`) and in `downloads.error = 'NO_STREAM'` counts in
-`/stats`. Row 3 (fMP4 joined into one file) is **not yet confirmed** to play in
-every Telegram client: check one with `/sc` + a real link before relying on it.
+MP3 goes first where it is still there because every Telegram client plays it
+as music; AAC 160k sounds better than MP3 128k, so swap rows if the `.m4a`
+files prove fine everywhere. A stream URL with `/0/30/` in it (a 30-second
+playlist) is refused as `PREVIEW_ONLY` before any segment is fetched. A master
+playlist (`#EXT-X-STREAM-INF`) is followed to its highest-bandwidth variant.
+
+Which formats tracks really have, seen from the cloud, is in `/sc`'s report
+(`📼 …`) and in `downloads.error = 'NO_STREAM'` counts in `/stats`. The joined
+fMP4 `.m4a` is **not yet confirmed** to play in every Telegram client: send a
+real link after the first deploy and play it on phone and desktop.
 
 ## 4. Limits
 
@@ -94,6 +105,7 @@ every Telegram client: check one with `/sc` + a real link before relying on it.
 | Length checked before downloading | 50 min (128 kbps MP3 ≈ 47 MB) | `MAX_DURATION_SECONDS` |
 | Thumbnail | JPEG, ≤ 320 px, < 200 KB | `artwork()` asks for `-t300x300`, caps at 200 KB |
 | Download stopped as soon as it passes the limit | `content-length` first, then counted while streaming | `download()` → `TOO_BIG` |
+| HLS segments fetched at once | 4, joined in playlist order | `PARALLEL` in `lib/soundcloud.js` |
 
 **Not known yet** (measure with the probe — `ms` of each step — before
 building on them):

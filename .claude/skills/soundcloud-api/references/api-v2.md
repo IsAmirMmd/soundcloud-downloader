@@ -51,27 +51,32 @@ A track (`kind: "track"`):
       },
       {
         "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:293/<uuid>/stream/hls",
-        "preset": "mp3_1_0",
+        "preset": "aac_96k",
         "snipped": false,
-        "format": { "protocol": "hls", "mime_type": "audio/mpeg" },
-        "quality": "sq"
-      },
-      {
-        "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:293/<uuid>/stream/progressive",
-        "preset": "mp3_1_0",
-        "snipped": false,
-        "format": { "protocol": "progressive", "mime_type": "audio/mpeg" },
+        "format": { "protocol": "hls", "mime_type": "audio/mp4; codecs=\"mp4a.40.2\"" },
         "quality": "sq"
       },
       {
         "url": "…/stream/hls",
         "preset": "abr_sq",
-        "format": { "protocol": "ctr-encrypted-hls", "mime_type": "audio/mp4; codecs=\"mp4a.40.2\"" }
+        "format": { "protocol": "hls", "mime_type": "audio/mp4; codecs=\"mp4a.40.2\"" }
       }
     ]
   }
 }
 ```
+
+That is a track of today (October 2026). SoundCloud is moving every track to
+AAC ([soundcloud/api#441](https://github.com/soundcloud/api/issues/441)):
+- progressive MP3 (`"protocol": "progressive"`, `audio/mpeg`) was removed on
+  2026-08-12;
+- HLS MP3 (`"preset": "mp3_…"`, `"protocol": "hls"`, `audio/mpeg`) stays on
+  tracks not converted yet, some for up to a year;
+- Opus HLS is gone;
+- `abr_sq` is adaptive and often 404s: never use it (yt-dlp skips it too);
+- DRM variants carry `"protocol": "ctr-encrypted-hls"` / `"cbc-encrypted-hls"`
+  (or `encrypted-hls`).
+- `"quality": "hq"` (AAC 256k) only appears for Go+ subscribers' tokens.
 
 - `duration` is the playable length (30 000 for a Go+ preview);
   `full_duration` the real one. Both in milliseconds.
@@ -95,9 +100,13 @@ A profile: `kind: "user"`.
 { "url": "https://cf-media.sndcdn.com/AbCd.128.mp3?Policy=…&Signature=…&Key-Pair-Id=…" }
 ```
 
-For `hls`: `https://cf-hls-media.sndcdn.com/playlist/…/playlist.m3u8?Policy=…`
-(other hosts are possible; the code assumes none). The URL is signed and
-expires within minutes.
+For `hls`: AAC playlists on `https://playback.media-streaming.soundcloud.cloud/…`,
+MP3 ones on `https://cf-hls-media.sndcdn.com/playlist/…/playlist.m3u8?Policy=…`
+(the code assumes no host). The URL is signed and expires within minutes. A
+URL with `/preview/0/30/` or `/playlist/0/30/` is the 30-second preview.
+
+For a private track add `secret_token=s-…` (the last segment of its secret
+link, or the track's `secret_token`), or the request 404s.
 
 ## The HLS media playlist
 
@@ -105,7 +114,7 @@ expires within minutes.
 #EXTM3U
 #EXT-X-VERSION:6
 #EXT-X-TARGETDURATION:10
-#EXT-X-MAP:URI="https://…/init.mp4"          ← AAC (fMP4) only
+#EXT-X-MAP:URI="https://…/init.mp4"          ← AAC (fMP4): init first, then .m4s segments
 #EXTINF:9.98,
 https://cf-hls-media.sndcdn.com/media/0/159960/AbCd.128.mp3?Policy=…
 #EXTINF:9.98,
