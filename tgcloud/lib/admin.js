@@ -36,12 +36,13 @@ export async function sendStats() {
     `🔗 Links: ${fa(d.links)} from ${fa(d.users)} users · last 24h: ${fa(d.links_1d)} from ${fa(d.users_1d)}\n` +
     `⬇️ Downloaded: ${fa(d.sent)} · ♻️ from cache: ${fa(d.cached)} · ❌ failed: ${fa(d.failed)}\n` +
     `🎵 Tracks on Telegram: ${fa(d.tracks)}\n` +
+    `✏️ Edited copies: ${fa(d.edits)} by ${fa(d.edit_users)} users\n` +
     `⚠️ Errors: ${errors}`);
 }
 
 // Tables in /backup. `settings` is left out on purpose: it holds secrets that
 // should not sit in a chat as a file.
-const BACKUP_TABLES = ['users', 'tracks', 'downloads'];
+const BACKUP_TABLES = ['users', 'tracks', 'downloads', 'sent_audios'];
 
 // /backup — every table as a CSV file (run on a schedule by
 // .github/workflows/scheduled.yml).

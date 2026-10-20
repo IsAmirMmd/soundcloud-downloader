@@ -8,7 +8,7 @@ import {
 } from './helpers.mjs';
 import message from '../tgcloud/handlers/message.js';
 import adminProbe from '../tgcloud/endpoints/adminProbe.js';
-import { fileName } from '../tgcloud/lib/download.js';
+import { fileName } from '../tgcloud/lib/audio.js';
 
 const USER = ADMIN_ID + 1;
 const OTHER = ADMIN_ID + 2;
@@ -142,6 +142,7 @@ test('/stats counts links, downloads, cache hits and failures by reason', async 
   assert.match(stats.params.text, /Links: ۳ from ۲ users/);
   assert.match(stats.params.text, /Downloaded: ۱ · ♻️ from cache: ۱ · ❌ failed: ۱/);
   assert.match(stats.params.text, /NOT_FOUND: ۱/);
+  assert.match(stats.params.text, /Edited copies: ۰ by ۰ users/);
 });
 
 test('the probe: every step from the cloud, for the admin only', async () => {

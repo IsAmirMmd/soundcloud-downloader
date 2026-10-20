@@ -70,6 +70,13 @@ export async function takePending(message) {
   return row.pending_at > now() - PENDING_WINDOW ? row.pending_action : null;
 }
 
+// Drops a pending question that starts with `prefix` (its ❌ button).
+export async function cancelPending(userId, prefix) {
+  await db.run(sql`
+    UPDATE users SET pending_action = NULL, pending_at = NULL
+    WHERE user_id = ${userId} AND substr(pending_action, 1, ${prefix.length}) = ${prefix}`);
+}
+
 // A page of users for the admin's Mini App (endpoints/adminUsers.js).
 // input: { page, size, q, sort: 'first' | 'last' | 'starts', dir }
 export async function listUsers(input = {}) {

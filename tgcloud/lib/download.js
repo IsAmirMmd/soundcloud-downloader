@@ -8,11 +8,12 @@
 //    file_id is kept for next time.
 // 4. The status message is deleted, or edited into the reason it failed.
 // Every link gets a row in `downloads`: what came of it, and how long it took.
+// The audio carries ✏️ 🎤 🖼 buttons to change its metadata (lib/audio.js,
+// lib/metadata.js).
 
 import { api, db, InputFile, BotApiError } from 'sdk';
 import { sql } from 'sdk/db';
-import { esc } from './html.js';
-import { botUsername } from './bot.js';
+import { fileName, mimeOf, sendAudioMessage } from './audio.js';
 import { findSoundcloudUrl, getTrack, downloadAudio, artwork, SoundcloudError } from './soundcloud.js';
 
 // What the user reads for each SoundcloudError code (INTERNAL: anything else).
@@ -30,22 +31,10 @@ const ERRORS = {
   INTERNAL: '⚠️ یه مشکلی پیش اومد. کمی بعد دوباره امتحان کن.',
 };
 
-// "Artist - Title.m4a" (or .mp3), without characters file systems refuse.
-export function fileName(track, ext) {
-  const base = [track.artist, track.title].filter(Boolean).join(' - ')
-    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
-  return `${base || `soundcloud-${track.id}`}.${ext}`;
-}
-
-async function caption(track) {
-  const link = track.permalink ? `<a href="${esc(track.permalink)}">SoundCloud</a> · ` : '';
-  return `${link}@${esc(await botUsername())}`;
-}
-
 // ---------- the file_id cache ----------
 
 async function cached(trackId) {
-  return db.get(sql`SELECT file_id FROM tracks WHERE track_id = ${trackId}`);
+  return db.get(sql`SELECT file_id, format FROM tracks WHERE track_id = ${trackId}`);
 }
 
 async function remember(track, audio, { size, format }) {
@@ -81,18 +70,17 @@ async function log(row) {
 // ---------- delivery ----------
 
 // The audio message: by file_id (a string) or as a new upload (an InputFile).
-async function sendAudio(message, track, audio, thumbnail) {
-  return api.sendAudio({
-    chat_id: message.chat.id,
-    audio,
+function sendAudio(message, track, audio, { ext, thumbnail } = {}) {
+  const info = {
+    trackId: track.id,
+    permalink: track.permalink,
+    ext,
     title: track.title,
-    performer: track.artist || undefined,
-    duration: track.duration || undefined,
-    ...(thumbnail ? { thumbnail: new InputFile(thumbnail, 'cover.jpg', { type: 'image/jpeg' }) } : {}),
-    caption: await caption(track),
-    parse_mode: 'HTML',
-    reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true },
-  });
+    artist: track.artist,
+    duration: track.duration,
+    artworkUrl: track.artworkUrl,
+  };
+  return sendAudioMessage(message.chat.id, audio, info, { thumbnail, replyTo: message.message_id });
 }
 
 // The track as audio: the kept file_id when there is one, otherwise
@@ -101,7 +89,7 @@ async function deliver(message, track) {
   const hit = await cached(track.id);
   if (hit) {
     try {
-      await sendAudio(message, track, hit.file_id);
+      await sendAudio(message, track, hit.file_id, { ext: /audio\/mp4/.test(hit.format ?? '') ? 'm4a' : 'mp3' });
       await sentAgain(track.id);
       return 'cached';
     } catch (e) {
@@ -113,7 +101,8 @@ async function deliver(message, track) {
   await api.sendChatAction({ chat_id: message.chat.id, action: 'upload_voice' }).catch(console.error);
   const file = await downloadAudio(track);
   const thumbnail = await artwork(track);
-  const sent = await sendAudio(message, track, new InputFile(file.bytes, fileName(track, file.ext), { type: file.type }), thumbnail);
+  const upload = new InputFile(file.bytes, fileName(track, file.ext), { type: mimeOf(file.ext) });
+  const sent = await sendAudio(message, track, upload, { ext: file.ext, thumbnail });
   if (sent?.audio?.file_id) await remember(track, sent.audio, { size: file.bytes.length, format: file.format });
   return 'sent';
 }
@@ -159,12 +148,15 @@ export async function downloadStats() {
            count(DISTINCT CASE WHEN created_at > unixepoch() - 86400 THEN user_id END) AS users_1d
     FROM downloads`);
   const tracksKept = await db.get(sql`SELECT count(*) AS n FROM tracks`);
+  const edits = await db.get(sql`SELECT count(*) AS n, count(DISTINCT chat_id) AS users FROM sent_audios WHERE edited = 1`);
   const errors = await db.all(sql`
     SELECT error, count(*) AS n FROM downloads WHERE status = 'failed' GROUP BY error ORDER BY n DESC, error`);
   // Raw SQL: aggregates may come back as strings.
   return {
     ...Object.fromEntries(Object.entries(s ?? {}).map(([k, v]) => [k, Number(v ?? 0)])),
     tracks: Number(tracksKept?.n ?? 0),
+    edits: Number(edits?.n ?? 0),
+    edit_users: Number(edits?.users ?? 0),
     errors: errors.map((e) => ({ error: e.error ?? '—', n: Number(e.n) })),
   };
 }

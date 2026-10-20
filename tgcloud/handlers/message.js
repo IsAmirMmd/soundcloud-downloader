@@ -3,8 +3,9 @@
 // `ctx.update`. Keep this file a router: the work happens in lib/.
 //
 // Order matters: payments → /start (with deep-link payloads) → /stop → admin
-// commands → public commands → the answer to a pending question → a
-// SoundCloud link to download → a hint (private chats) → ignore.
+// commands → public commands → the answer to a pending question (feedback,
+// or a new title / artist / cover for an audio) → a SoundCloud link to
+// download → a hint (private chats) → ignore.
 
 import { api } from 'sdk';
 import { ADMIN_ID } from '../lib/config.js';
@@ -13,6 +14,7 @@ import { sendHome, sendScreen } from '../lib/menu.js';
 import { sendStats, sendBackup, setCommands, syncCommands, setClientId } from '../lib/admin.js';
 import { sendProbe } from '../lib/probe.js';
 import { replyDownload } from '../lib/download.js';
+import { applyMetaEdit } from '../lib/metadata.js';
 
 // The admin command in `text`, started; or null when it is not one.
 // Scheduled jobs call these too (.github/workflows/scheduled.yml).
@@ -74,6 +76,8 @@ export default async function (message, ctx) {
     await api.sendMessage({ chat_id: ADMIN_ID, text: `💬 Feedback from ${message.from.id}:\n${text}` });
     return api.sendMessage({ chat_id: message.chat.id, text: 'ممنون، رسید 🙏' });
   }
+  // ✏️ 🎤 🖼 under an audio asked for this: a copy with the new metadata.
+  if (pending?.startsWith('meta:') && (await applyMetaEdit(message, pending))) return;
 
   // A SoundCloud link sent to the bot itself: the track comes back as audio.
   // Groups are left alone for now (docs/SOUNDCLOUD.md, roadmap).

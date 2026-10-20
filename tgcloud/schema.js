@@ -53,6 +53,29 @@ export const tracks = table('tracks', {
   last_sent_at:   integer('last_sent_at').default(sql`(unixepoch())`),
 });
 
+// Every audio message the bot sent — a downloaded track, a cached one, an
+// edited copy (lib/audio.js): what is in it, so its ✏️ 🎤 🖼 buttons
+// (lib/metadata.js) can make a copy with a new title, artist or cover.
+export const sent_audios = table('sent_audios', {
+  id:             integer('id').primaryKey({ autoIncrement: true }),
+  chat_id:        integer('chat_id').notNull(),
+  message_id:     integer('message_id').notNull(),
+  track_id:       integer('track_id'),                  // the SoundCloud track it came from
+  permalink_url:  text('permalink_url'),                // its page: the caption, and a new download for files over 20 MB
+  file_id:        text('file_id').notNull(),
+  ext:            text('ext'),                          // 'mp3' | 'm4a'
+  title:          text('title'),
+  artist:         text('artist'),
+  duration:       integer('duration'),                  // seconds
+  artwork_url:    text('artwork_url'),                  // SoundCloud's cover
+  cover_file_id:  text('cover_file_id'),                // a cover the user sent instead (Telegram photo, ≤ 1280 px)
+  cover_thumb_id: text('cover_thumb_id'),               // the same photo at ≤ 320 px, for the thumbnail
+  edited:         boolean('edited').default(false),     // made by ✏️ 🎤 🖼
+  created_at:     integer('created_at').default(sql`(unixepoch())`),
+}, (t) => ({
+  message: uniqueIndex('uidx_sent_audios_message').on(t.chat_id, t.message_id),
+}));
+
 // Every link someone sent (lib/download.js): what came of it, for /stats and
 // for finding out why downloads fail (logs are visible only through `tgcloud run`).
 export const downloads = table('downloads', {

@@ -367,14 +367,18 @@ export async function downloadAudio(track, { limit = MAX_AUDIO_BYTES } = {}) {
   return { bytes, ext: format.ext, type: format.type, format: `${format.protocol} ${format.type}${preset}` };
 }
 
-// The cover as a JPEG small enough for a Telegram thumbnail (≤ 320 px,
-// < 200 KB): the `-t300x300` size of the artwork. Never throws.
-export async function artwork(track) {
-  const url = track.artworkUrl?.replace(/-(large|t\d+x\d+|crop|original)\.(jpg|png)$/, '-t300x300.jpg');
+// A SoundCloud artwork URL at another size (`t300x300`, `t500x500`, …) as a
+// JPEG, or null when there is none or it is over `limit`. Never throws.
+export async function coverBytes(artworkUrl, size, limit) {
+  const url = artworkUrl?.replace(/-(large|t\d+x\d+|crop|original)\.(jpg|png)$/, `-${size}.jpg`);
   if (!url) return null;
   try {
-    return await download([url], 200 * 1024);
+    return await download([url], limit);
   } catch {
     return null;
   }
 }
+
+// The cover as a JPEG small enough for a Telegram thumbnail (≤ 320 px,
+// < 200 KB): the `-t300x300` size of the artwork. Never throws.
+export const artwork = (track) => coverBytes(track.artworkUrl, 't300x300', 200 * 1024);

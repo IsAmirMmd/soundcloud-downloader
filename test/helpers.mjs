@@ -202,7 +202,7 @@ export function soundcloud({ tracks = {}, short = {}, clientId = CLIENT_ID, page
     if (/^https:\/\/(cf-hls-media\.sndcdn\.com|playback\.media-streaming\.soundcloud\.cloud)\//.test(base)) {
       return reply(200, fakeBytes(base.split('/').slice(-3).join('/')));
     }
-    const art = /^https:\/\/i1\.sndcdn\.com\/((?:artworks|avatars)-\d+-t300x300\.jpg)$/.exec(base);
+    const art = /^https:\/\/i1\.sndcdn\.com\/((?:artworks|avatars)-\d+-t\d+x\d+\.jpg)$/.exec(base);
     if (art) return reply(200, fakeBytes(art[1]));
     throw new Error(`unexpected fetch ${url}`);
   });
