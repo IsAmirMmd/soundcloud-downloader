@@ -1,10 +1,12 @@
 # دانلودر ساندکلاد تلگرام
 
+![ساندگیر](branding/banner.png)
+
 <div dir="rtl">
 
 رباتی روی **Telegram Serverless (tgcloud)** که لینک هر ترک ساندکلاد را بگیرد، فایل صوتی‌اش را با اسم، خواننده و کاور در همان چت می‌فرستد. سرور ندارد: کدش ماژول‌های جاوااسکریپتی است که خود تلگرام اجرا می‌کند. معماری، تست‌ها و دیپلوی همان الگوی [inline-calculator-telegram](https://github.com/IsAmirMmd/inline-calculator-telegram) است که از [tgcloud-kit](https://github.com/IsAmirMmd/serverless-tg-bot) آمده.
 
-> **وضعیت:** نسخه‌ی اول. کد و تست‌های آفلاین آماده‌اند، ولی هنوز در سرور تلگرام امتحان نشده. قدم اول بعد از دیپلوی، `/sc` است ([پایین](#بررسی-از-سرور-تلگرام) را ببینید).
+> **وضعیت:** روی ربات `app8916613120` دیپلوی شده. بررسی از سرور تلگرام (`endpoints/adminProbe`) جواب داد و اولین لینک واقعی (`on.soundcloud.com/…`) در ۲٫۸ ثانیه به فایل صوتی AAC 160k (۳٫۷ مگابایت) تبدیل و فرستاده شد.
 
 ## استفاده
 
@@ -64,7 +66,7 @@ https://on.soundcloud.com/AbCd123
 
 ## راه‌اندازی
 
-۱. در **BotFather** ربات را بسازید. اسم، توضیح و دستورها: [`branding/BOTFATHER.md`](branding/BOTFATHER.md).
+۱. در **BotFather** ربات را بسازید. اسم، بیو، توضیح، عکس پروفایل و بنر: [`branding/BOTFATHER.md`](branding/BOTFATHER.md).
 
 ۲. نصب و تست آفلاین (Node 22.12 یا بالاتر):
 
@@ -147,7 +149,9 @@ tgcloud/
   schema.js                         ← settings، users، tracks (کش file_id)، downloads (لاگ)
 test/                               ← soundcloud / download / commands / bot، روی SDK و ساندکلاد شبیه‌سازی‌شده
 scripts/sql.mjs                     ← npm run sql
-branding/BOTFATHER.md               ← اسم، توضیح‌ها و دستورها برای BotFather
+scripts/render-branding.mjs         ← ساخت عکس پروفایل و بنر از branding/*.html (Playwright)
+branding/                           ← BOTFATHER.md (اسم، بیو، توضیح)، avatar/banner به‌صورت HTML و PNG
+assets/fonts/                       ← وزیرمتن (SIL OFL)، برای عکس‌های برندینگ
 docs/                               ← ARCHITECTURE.md، SOUNDCLOUD.md، tgcloud-sdk.md
 .claude/skills/                     ← bot-feature، soundcloud-api، telegram-audio
 .github/workflows/                  ← deploy، check، run (Run in cloud)، scheduled

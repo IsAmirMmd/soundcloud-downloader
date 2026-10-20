@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Bot description picture (BotFather → /setdescriptionpic), 1280×720 (16:9).
+     Telegram shows it about 340 px wide on a phone, so the text is big.
+     The Mirza look (mirzaplugin.ir): cream page, paper card with ink outline and
+     hard shadow, coral accent, Vazirmatn. On the left: the link the user sends
+     and the audio message that comes back. No emoji (the renderer may lack
+     the font). Rendered by scripts/render-branding.mjs. -->
+<style>
+  @font-face { font-family: "Mirza Vazir"; src: url("../assets/fonts/Vazirmatn-Variable.woff2") format("woff2"); font-weight: 100 900; }
+  :root { --ink:#20211f; --muted:#5c5650; --paper:#fffdf9; --cream:#f4efe7; --sand:#ebe3d6; --coral:#fa604e; --coral-soft:#fbdcd4; --coral-ink:#9f3a2b; }
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1280px; height: 720px; overflow: hidden; font-family: "Mirza Vazir", sans-serif; color: var(--ink);
+         background: var(--cream); position: relative; }
+  .pattern { position: absolute; inset: 0; }
+
+  /* ---------- text, on the right ---------- */
+  .copy { position: absolute; right: 76px; top: 0; bottom: 0; width: 600px; display: flex; flex-direction: column; justify-content: center; gap: 22px; }
+  .chip { align-self: flex-start; padding: 4px 24px 8px; border: 4px solid var(--ink); border-radius: 999px; background: var(--coral);
+          box-shadow: 0 6px 0 var(--ink); font-size: 34px; font-weight: 800; }
+  .title { font-size: 156px; font-weight: 900; line-height: 1.05; letter-spacing: -2px; }
+  .sub { font-size: 40px; font-weight: 700; line-height: 1.55; color: var(--muted); white-space: nowrap; }
+  .sub b { color: var(--ink); font-weight: 900; }
+
+  /* ---------- the chat, on the left ---------- */
+  .chat { position: absolute; left: 64px; top: 92px; width: 500px; transform: rotate(-4deg); }
+  .link { display: flex; align-items: center; gap: 14px; width: fit-content; margin-inline-start: auto; margin-bottom: 30px;
+          direction: ltr; padding: 12px 26px 16px; border-radius: 26px; background: var(--ink); color: var(--paper);
+          font-size: 30px; font-weight: 700; box-shadow: 0 6px 0 var(--coral); }
+  .link em { font-style: normal; color: var(--coral); }
+  .link svg { width: 34px; height: 34px; flex: none; }
+  .card { padding: 30px 32px 22px; border-radius: 34px; background: var(--paper); border: 5px solid var(--ink); box-shadow: 0 12px 0 var(--ink); }
+  .pill { display: inline-block; padding: 0 18px 4px; border: 3px solid var(--ink); border-radius: 999px; background: var(--coral);
+          box-shadow: 0 4px 0 var(--ink); font-size: 22px; font-weight: 800; }
+  .track { display: flex; align-items: center; gap: 22px; direction: ltr; padding: 24px 0 18px; }
+  .cover { width: 112px; height: 112px; flex: none; border-radius: 24px; border: 4px solid var(--ink); background: var(--coral-soft);
+           display: grid; place-items: center; }
+  .cover svg { width: 64px; height: 64px; }
+  .name { font-size: 38px; font-weight: 900; line-height: 1.2; }
+  .artist { font-size: 26px; font-weight: 700; color: var(--muted); }
+  .player { display: flex; align-items: center; gap: 18px; direction: ltr; padding-bottom: 18px; }
+  .play { width: 74px; height: 74px; flex: none; }
+  .wave { flex: 1; height: 64px; }
+  .foot { display: flex; justify-content: space-between; padding-top: 12px; border-top: 3px solid rgba(32,33,31,.12);
+          font-size: 22px; font-weight: 700; color: var(--muted); }
+  .foot .ltr { direction: ltr; }
+</style>
+</head>
+<body>
+<svg class="pattern" viewBox="0 0 1280 720" aria-hidden="true">
+  <defs>
+    <path id="note" d="M38 8 L38 62 A16 13 0 1 1 30 50 L30 4 Q30 0 34 1 L62 10 Q66 11 66 15 L66 26 Q66 30 62 29 L38 22 Z"/>
+    <pattern id="notes" width="210" height="180" patternUnits="userSpaceOnUse">
+      <use href="#note" transform="translate(16 14) scale(.82)" fill="var(--sand)"/>
+      <use href="#note" transform="translate(120 102) rotate(-12) scale(.82)" fill="var(--sand)"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="720" fill="url(#notes)"/>
+</svg>
+
+<div class="copy">
+  <div class="chip">ربات دانلود ساندکلاد</div>
+  <div class="title">ساندگیر</div>
+  <div class="sub">لینک رو بفرست، آهنگ رو بگیر<br><b>با اسم</b> · <b>کاور</b> · <b>توی چند ثانیه</b></div>
+</div>
+
+<div class="chat">
+  <div class="link">
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <path d="M44 56 Q36 48 44 40 L58 26 Q66 18 74 26 Q82 34 74 42 L68 48 M56 44 Q64 52 56 60 L42 74 Q34 82 26 74 Q18 66 26 58 L32 52"
+            fill="none" stroke="var(--coral)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span>on.soundcloud.com/<em>x7Kq2</em></span>
+  </div>
+  <div class="card">
+    <span class="pill">فایل صوتی</span>
+    <div class="track">
+      <div class="cover">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M40 18 L40 66 A15 12 0 1 1 32 55 L32 14 Q32 10 36 11 L72 20 Q76 21 76 25 L76 36 Q76 40 72 39 L40 31 Z" fill="var(--coral-ink)"/>
+        </svg>
+      </div>
+      <div>
+        <div class="name">Late Night Drive</div>
+        <div class="artist">lofi.station</div>
+      </div>
+    </div>
+    <div class="player">
+      <svg class="play" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="44" fill="var(--coral)" stroke="var(--ink)" stroke-width="6"/>
+        <path d="M41 32 L69 50 L41 68 Z" fill="var(--ink)" stroke="var(--ink)" stroke-width="4" stroke-linejoin="round"/>
+      </svg>
+      <svg class="wave" id="wave" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true"></svg>
+    </div>
+    <div class="foot"><span class="ltr">m4a · ۳٫۷ MB</span><span>۳:۳۴</span></div>
+  </div>
+</div>
+<script>
+  // A waveform: bars of a fixed made-up shape, the first 60% "played" (coral).
+  const heights = [18,30,44,26,52,38,60,34,48,22,40,56,30,46,62,36,24,50,42,28,58,32,46,20,38,54,26,44,34,18,30,48,22,40,28];
+  const wave = document.getElementById('wave');
+  const step = 300 / heights.length;
+  wave.innerHTML = heights.map((h, i) => {
+    const color = i < heights.length * 0.6 ? 'var(--coral)' : 'rgba(32,33,31,.22)';
+    return `<rect x="${(i * step + 1).toFixed(1)}" y="${(64 - h) / 2}" width="${(step - 3).toFixed(1)}" height="${h}" rx="3" fill="${color}"/>`;
+  }).join('');
+</script>
+</body>
+</html>

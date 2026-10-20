@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Bot profile picture (BotFather → /setuserpic), 1280×1280: a paper key with
+     a coral cloud and a download arrow — "from the cloud, to you" — in the
+     Mirza look (mirzaplugin.ir): ink outlines, hard shadows, cream page with
+     faint notes. A generic cloud, not SoundCloud's logo. Everything sits
+     inside the circle Telegram crops to and reads at chat-list size.
+     ?bg=coral renders the coral variant. Rendered by scripts/render-branding.mjs. -->
+<style>
+  @font-face { font-family: "Mirza Vazir"; src: url("../assets/fonts/Vazirmatn-Variable.woff2") format("woff2"); font-weight: 100 900; }
+  :root { --ink:#20211f; --paper:#fffdf9; --cream:#f4efe7; --sand:#ebe3d6; --coral:#fa604e; --coral-soft:#fbdcd4; --coral-ink:#9f3a2b; }
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1280px; height: 1280px; overflow: hidden; background: var(--cream);
+         display: grid; place-items: center; position: relative; }
+  body.coral { background: var(--coral); }
+  .pattern { position: absolute; inset: 0; }
+  body.coral .pattern { opacity: .2; }
+  .key { position: relative; width: 700px; height: 700px; border-radius: 150px; background: var(--paper);
+         border: 22px solid var(--ink); box-shadow: 0 32px 0 var(--ink); transform: translateY(-16px);
+         display: grid; place-items: center; }
+  .key svg { width: 600px; height: 600px; transform: translateY(-10px); }
+  .cloud { fill: var(--coral); }
+  body.coral .cloud { fill: var(--ink); }
+</style>
+</head>
+<body>
+<svg class="pattern" viewBox="0 0 1280 1280" aria-hidden="true">
+  <defs>
+    <!-- an eighth note -->
+    <path id="note" d="M38 8 L38 62 A16 13 0 1 1 30 50 L30 4 Q30 0 34 1 L62 10 Q66 11 66 15 L66 26 Q66 30 62 29 L38 22 Z"/>
+    <pattern id="notes" width="230" height="210" patternUnits="userSpaceOnUse">
+      <use href="#note" transform="translate(24 20)" fill="var(--sand)"/>
+      <use href="#note" transform="translate(140 122) rotate(-12)" fill="var(--sand)"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="1280" fill="url(#notes)"/>
+</svg>
+<div class="key">
+  <svg viewBox="0 0 200 200" aria-hidden="true">
+    <!-- the cloud -->
+    <path class="cloud" d="M52 138 Q22 138 22 110 Q22 84 50 82 Q54 50 88 46 Q116 44 128 70 Q136 62 150 64 Q172 68 174 92 Q194 98 192 118 Q190 138 166 138 Z"
+          stroke="var(--ink)" stroke-width="9" stroke-linejoin="round"/>
+    <!-- the download arrow, out of the cloud: ink, on a paper halo that cuts a
+         clean gap where it crosses the cloud's outline (and keeps it visible
+         on the ink cloud of the coral variant) -->
+    <path id="arrow" d="M106 82 V162 M80 138 L106 164 L132 138" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <use href="#arrow" stroke="var(--paper)" stroke-width="31"/>
+    <use href="#arrow" stroke="var(--ink)" stroke-width="15"/>
+  </svg>
+</div>
+<script>
+  if (new URLSearchParams(location.search).get('bg') === 'coral') document.body.classList.add('coral');
+</script>
+</body>
+</html>
