@@ -26,6 +26,8 @@ private chat: "https://on.soundcloud.com/AbC"
   │    └─ one file, or the HLS segments joined, 4 fetched at a time       │
   │       (master playlist → best variant; fMP4 init segment first)       │
   ├─ artwork(track) → 300×300 JPEG thumbnail (best effort)                │
+  ├─ withTags: title, artist, 500×500 cover written into the file         │
+  │     (ID3 / iTunes ilst, lib/tags.js) — a saved file shows them too    │
   ├─ sendAudio(InputFile "Artist - Title.m4a" or .mp3, title, performer…) │
   └─ tracks ← file_id ◀───────────────────────────────────────────────────┘
   downloads ← { status: sent | cached | failed, error, ms }; status message deleted

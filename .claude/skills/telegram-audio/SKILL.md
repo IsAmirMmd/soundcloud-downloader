@@ -19,12 +19,19 @@ the SDK reference is
    by `file_id` — no SoundCloud request beyond resolve, no upload.
 3. **Stale file_id** → `sendAudio` throws `BotApiError` 400: delete the row
    (`forget`) and upload again. Any other error goes up.
-4. **Upload** with `new InputFile(bytes, fileName(track, ext), { type })`,
-   `title`, `performer`, `duration`, `thumbnail` (optional), HTML `caption`
-   with every outside string through `esc()`, and `reply_parameters` with
+4. **Tag, then upload.** `withTags` (`lib/audio.js`) writes title, artist and
+   the 500 px cover into the bytes first: the `thumbnail` is Telegram's own,
+   and a file saved to Files or a music app shows only what is inside it
+   (a user saw no cover on iOS until the tags went in). Then
+   `new InputFile(bytes, fileName(track, ext), { type })`, `title`,
+   `performer`, `duration`, `thumbnail` (300 px), HTML `caption` with every
+   outside string through `esc()`, and `reply_parameters` with
    `allow_sending_without_reply: true` (the link may have been deleted).
-5. **Remember** `sent.audio.file_id` (+ `file_unique_id`, size, format) with
-   `INSERT … ON CONFLICT (track_id) DO UPDATE`.
+5. **Remember** `sent.audio.file_id` (+ `file_unique_id`, size, format,
+   `tags_version`) with `INSERT … ON CONFLICT (track_id) DO UPDATE`. A kept
+   file_id older than `FILE_VERSION` (`lib/download.js`) is not reused: the
+   track is uploaded again once. Bump `FILE_VERSION` whenever what goes into
+   a file changes.
 6. **Log every link** in `downloads` (`sent` / `cached` / `failed` + error
    code + ms). `log()` never throws.
 7. **Finish the status message**: delete it on success; on failure edit it
