@@ -48,6 +48,7 @@ export const tracks = table('tracks', {
   file_unique_id: text('file_unique_id'),
   size:           integer('size'),                      // bytes uploaded
   format:         text('format'),                       // which stream it came from, e.g. 'progressive audio/mpeg'
+  tags_version:   integer('tags_version'),              // FILE_VERSION in lib/download.js it was made with; older → uploaded again
   sends:          integer('sends').default(0),          // times delivered, the first upload included
   created_at:     integer('created_at').default(sql`(unixepoch())`),
   last_sent_at:   integer('last_sent_at').default(sql`(unixepoch())`),

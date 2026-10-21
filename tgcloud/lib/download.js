@@ -4,8 +4,9 @@
 // 1. A status message ("⏳ …") answers the link right away.
 // 2. The link is resolved to a track (lib/soundcloud.js).
 // 3. A track already on Telegram (`tracks`) is sent again by its file_id.
-//    Otherwise its audio is downloaded, uploaded with sendAudio, and the
-//    file_id is kept for next time.
+//    Otherwise its audio is downloaded, its title, artist and cover are
+//    written into the file (lib/tags.js), it is uploaded with sendAudio, and
+//    the file_id is kept for next time.
 // 4. The status message is deleted, or edited into the reason it failed.
 // Every link gets a row in `downloads`: what came of it, and how long it took.
 // The audio carries ✏️ 🎤 🖼 buttons to change its metadata (lib/audio.js,
@@ -13,8 +14,8 @@
 
 import { api, db, InputFile, BotApiError } from 'sdk';
 import { sql } from 'sdk/db';
-import { fileName, mimeOf, sendAudioMessage } from './audio.js';
-import { findSoundcloudUrl, getTrack, downloadAudio, artwork, SoundcloudError } from './soundcloud.js';
+import { fileName, mimeOf, sendAudioMessage, withTags } from './audio.js';
+import { findSoundcloudUrl, getTrack, downloadAudio, artwork, coverBytes, SoundcloudError } from './soundcloud.js';
 
 // What the user reads for each SoundcloudError code (INTERNAL: anything else).
 const ERRORS = {
@@ -33,20 +34,29 @@ const ERRORS = {
 
 // ---------- the file_id cache ----------
 
+// What goes into an uploaded file. A kept file_id from an older version is
+// not reused: the track is downloaded and uploaded again, once. Bump it when
+// the files change. 1: title, artist and cover written in (until then, the
+// cover was only Telegram's thumbnail, and saved files had none).
+const FILE_VERSION = 1;
+
 async function cached(trackId) {
-  return db.get(sql`SELECT file_id, format FROM tracks WHERE track_id = ${trackId}`);
+  return db.get(sql`
+    SELECT file_id, format FROM tracks
+    WHERE track_id = ${trackId} AND coalesce(tags_version, 0) >= ${FILE_VERSION}`);
 }
 
 async function remember(track, audio, { size, format }) {
   await db.run(sql`
-    INSERT INTO tracks (track_id, permalink_url, title, artist, duration, file_id, file_unique_id, size, format, sends)
+    INSERT INTO tracks (track_id, permalink_url, title, artist, duration, file_id, file_unique_id, size, format, tags_version, sends)
     VALUES (${track.id}, ${track.permalink}, ${track.title}, ${track.artist}, ${track.duration},
-            ${audio.file_id}, ${audio.file_unique_id ?? null}, ${size}, ${format}, 1)
+            ${audio.file_id}, ${audio.file_unique_id ?? null}, ${size}, ${format}, ${FILE_VERSION}, 1)
     ON CONFLICT (track_id) DO UPDATE SET
       file_id = excluded.file_id,
       file_unique_id = excluded.file_unique_id,
       size = excluded.size,
       format = excluded.format,
+      tags_version = excluded.tags_version,
       sends = coalesce(tracks.sends, 0) + 1,
       last_sent_at = unixepoch()`);
 }
@@ -100,10 +110,12 @@ async function deliver(message, track) {
   }
   await api.sendChatAction({ chat_id: message.chat.id, action: 'upload_voice' }).catch(console.error);
   const file = await downloadAudio(track);
-  const thumbnail = await artwork(track);
-  const upload = new InputFile(file.bytes, fileName(track, file.ext), { type: mimeOf(file.ext) });
+  // The 300 px artwork is Telegram's thumbnail; the 500 px one goes into the file.
+  const [thumbnail, cover] = await Promise.all([artwork(track), coverBytes(track.artworkUrl, 't500x500', 1024 * 1024)]);
+  const bytes = withTags(file.bytes, file.ext, { title: track.title, artist: track.artist, cover });
+  const upload = new InputFile(bytes, fileName(track, file.ext), { type: mimeOf(file.ext) });
   const sent = await sendAudio(message, track, upload, { ext: file.ext, thumbnail });
-  if (sent?.audio?.file_id) await remember(track, sent.audio, { size: file.bytes.length, format: file.format });
+  if (sent?.audio?.file_id) await remember(track, sent.audio, { size: bytes.length, format: file.format });
   return 'sent';
 }
 

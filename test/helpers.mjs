@@ -105,6 +105,22 @@ export function scTrack(id, { streams = ['aac_160k', 'aac_96k', 'abr_sq'], polic
 
 // The bytes of a file the fake serves: its name, so a test can tell what was joined.
 export const fakeBytes = (name) => new Uint8Array(Buffer.from(`<${name}>`));
+
+// MP4 boxes, for a fake that serves real fragmented MP4 (soundcloud({ mp4: true })).
+export function mp4Box(type, ...parts) {
+  const body = Buffer.concat(parts.map((p) => Buffer.from(p)));
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(body.length + 8);
+  head.write(type, 4, 'latin1');
+  return Buffer.concat([head, body]);
+}
+// An HLS init segment (ftyp + moov), and a media segment (moof with
+// default-base-is-moof + mdat holding `name`), like SoundCloud's AAC.
+const fmp4Init = () => new Uint8Array(Buffer.concat([mp4Box('ftyp', 'iso6mp41'), mp4Box('moov', mp4Box('mvhd', Buffer.alloc(100)))]));
+const fmp4Segment = (name) => new Uint8Array(Buffer.concat([
+  mp4Box('moof', mp4Box('mfhd', Buffer.alloc(8)), mp4Box('traf', mp4Box('tfhd', [0, 2, 0, 0, 0, 0, 0, 1]))),
+  mp4Box('mdat', `<${name}>`),
+]));
 export const asText = (bytes) => Buffer.from(bytes).toString();
 
 function reply(status, body, { url, headers = {} } = {}) {
@@ -135,8 +151,9 @@ const paramsOf = (query = '') => Object.fromEntries(query.split('&').filter(Bool
 //   clientId the id the site hands out and api-v2 accepts
 //   pageId   false: the page carries no id, only its script does
 //   down     substrings of URLs that answer 503
+//   mp4      AAC segments as real fragmented MP4 boxes, not just their names
 // Returns the URLs asked, in order.
-export function soundcloud({ tracks = {}, short = {}, clientId = CLIENT_ID, pageId = true, down = [] } = {}) {
+export function soundcloud({ tracks = {}, short = {}, clientId = CLIENT_ID, pageId = true, down = [], mp4 = false } = {}) {
   const asked = [];
   mockFetch(async (url) => {
     asked.push(url);
@@ -200,7 +217,10 @@ export function soundcloud({ tracks = {}, short = {}, clientId = CLIENT_ID, page
       ].join('\n'));
     }
     if (/^https:\/\/(cf-hls-media\.sndcdn\.com|playback\.media-streaming\.soundcloud\.cloud)\//.test(base)) {
-      return reply(200, fakeBytes(base.split('/').slice(-3).join('/')));
+      const name = base.split('/').slice(-3).join('/');
+      if (mp4 && name.endsWith('init.mp4')) return reply(200, fmp4Init());
+      if (mp4 && name.endsWith('.m4s')) return reply(200, fmp4Segment(name));
+      return reply(200, fakeBytes(name));
     }
     const art = /^https:\/\/i1\.sndcdn\.com\/((?:artworks|avatars)-\d+-t\d+x\d+\.jpg)$/.exec(base);
     if (art) return reply(200, fakeBytes(art[1]));

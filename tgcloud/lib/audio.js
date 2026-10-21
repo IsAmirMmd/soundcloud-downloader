@@ -5,8 +5,10 @@
 
 import { api, db, InputFile } from 'sdk';
 import { sql } from 'sdk/db';
+import { MAX_AUDIO_BYTES } from './config.js';
 import { esc } from './html.js';
 import { botUsername } from './bot.js';
+import { tagAudio } from './tags.js';
 
 // Under every audio: change its title, its artist or its cover (lib/metadata.js).
 export const META_BUTTONS = { inline_keyboard: [
@@ -22,6 +24,15 @@ export function fileName({ id, artist, title }, ext) {
 }
 
 export const mimeOf = (ext) => (ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg');
+
+// The file with its title, artist and cover written in (lib/tags.js): the
+// thumbnail sendAudio takes is Telegram's own, and a saved file shows only
+// what is inside it. The cover is left out when it would push the file over
+// the upload limit; a layout tags.js can't rewrite goes as it is.
+export function withTags(bytes, ext, { title, artist, cover }) {
+  const fits = cover && bytes.length + cover.length <= MAX_AUDIO_BYTES;
+  return tagAudio(bytes, ext, { title, artist, cover: fits ? cover : null }) ?? bytes;
+}
 
 async function caption(permalink) {
   const link = permalink ? `<a href="${esc(permalink)}">SoundCloud</a> · ` : '';

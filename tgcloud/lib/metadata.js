@@ -18,8 +18,7 @@ import { api, db, InputFile, BotApiError } from 'sdk';
 import { sql } from 'sdk/db';
 import { esc } from './html.js';
 import { askFor, cancelPending } from './users.js';
-import { fileName, mimeOf, sendAudioMessage, infoOf } from './audio.js';
-import { tagAudio } from './tags.js';
+import { fileName, mimeOf, sendAudioMessage, infoOf, withTags } from './audio.js';
 import { findSoundcloudUrl, getTrack, downloadAudio, coverBytes } from './soundcloud.js';
 
 const QUESTIONS = {
@@ -157,7 +156,7 @@ export async function applyMetaEdit(message, pending) {
     await api.sendChatAction({ chat_id: chatId, action: 'upload_voice' }).catch(console.error);
     const file = await audioBytes(row);
     const [embedded, thumbnail] = await Promise.all([cover(info, false), cover(info, true)]);
-    const bytes = tagAudio(file.bytes, file.ext, { title: info.title, artist: info.artist, cover: embedded }) ?? file.bytes;
+    const bytes = withTags(file.bytes, file.ext, { title: info.title, artist: info.artist, cover: embedded });
     info.ext = file.ext;
     const upload = new InputFile(bytes, fileName({ id: row.track_id, ...info }, file.ext), { type: mimeOf(file.ext) });
     await sendAudioMessage(chatId, upload, info, { thumbnail, replyTo: message.message_id });

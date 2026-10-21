@@ -4,7 +4,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fresh, take, failNext, mockApi, row, rows, msg, groupMsg, ctxOf, soundcloud, scTrack, asText, ADMIN_ID,
+  fresh, take, failNext, mockApi, row, rows, exec, msg, groupMsg, ctxOf, soundcloud, scTrack, asText, ADMIN_ID,
 } from './helpers.mjs';
 import message from '../tgcloud/handlers/message.js';
 import adminProbe from '../tgcloud/endpoints/adminProbe.js';
@@ -73,6 +73,76 @@ test('the same track again is sent by its file_id, without downloading', async (
   assert.ok(!asked.some((u) => u.includes('/stream/') || u.includes('playlist.m3u8')), 'no stream fetched');
   assert.equal(row('SELECT sends FROM tracks WHERE track_id = 1').sends, 2);
   assert.equal(row('SELECT status FROM downloads WHERE user_id = ?', OTHER).status, 'cached');
+});
+
+// The ilst items of an uploaded MP4: { '©nam': text, '©ART': text, covr: bytes }.
+function mp4Tags(bytes) {
+  const b = Buffer.from(bytes);
+  const kids = (start, end) => {
+    const out = [];
+    for (let i = start; i < end;) {
+      const size = b.readUInt32BE(i);
+      out.push({ type: b.toString('latin1', i + 4, i + 8), start: i + 8, end: i + size });
+      i += size;
+    }
+    return out;
+  };
+  const get = (list, type) => list.find((x) => x.type === type);
+  const moov = get(kids(0, b.length), 'moov');
+  const meta = get(kids(moov.start, moov.end), 'udta');
+  const ilst = get(kids(get(kids(meta.start, meta.end), 'meta').start + 4, meta.end), 'ilst');
+  return Object.fromEntries(kids(ilst.start, ilst.end).map((item) => {
+    const data = kids(item.start, item.end)[0];
+    const payload = b.subarray(data.start + 8, data.end);
+    return [item.type, item.type === 'covr' ? payload.toString() : payload.toString('utf8')];
+  }));
+}
+
+test('the saved file shows the cover too: title, artist and the 500 px artwork are written into the m4a', async () => {
+  soundcloud({ tracks: { [LINK]: scTrack(1) }, mp4: true });
+  telegramKeepsAudio();
+  await message(msg(USER, LINK), {});
+  const audio = take().find((c) => c.method === 'sendAudio');
+  assert.deepEqual(mp4Tags(audio.params.audio.data), {
+    '\u00a9nam': 'Track 1',
+    '\u00a9ART': 'artist',
+    covr: '<artworks-1-t500x500.jpg>',
+  });
+  // The audio itself, after the tags, as it came: the segments in order.
+  const file = Buffer.from(audio.params.audio.data);
+  for (const name of ['0/10/t1.m4s', '10/20/t1.m4s', 't1/aac_160k/seg3.m4s']) assert.ok(file.includes(Buffer.from(`<${name}>`)), name);
+  assert.equal(asText(audio.params.thumbnail.data), '<artworks-1-t300x300.jpg>');   // Telegram's own, as before
+  assert.equal(row('SELECT tags_version FROM tracks WHERE track_id = 1').tags_version, 1);
+});
+
+test('and into the mp3, as an ID3 tag before the audio', async () => {
+  const mp3Link = 'https://soundcloud.com/artist/track-2';
+  soundcloud({ tracks: { [mp3Link]: scTrack(2, { streams: ['progressive'] }) } });
+  telegramKeepsAudio();
+  await message(msg(USER, mp3Link), {});
+  const file = Buffer.from(take().find((c) => c.method === 'sendAudio').params.audio.data);
+  assert.equal(file.toString('latin1', 0, 3), 'ID3');
+  assert.ok(file.includes(Buffer.from('Track 2', 'utf16le')));
+  assert.ok(file.includes(Buffer.from('<artworks-2-t500x500.jpg>')));
+  assert.ok(file.subarray(-'<t2.mp3>'.length).equals(Buffer.from('<t2.mp3>')));
+});
+
+test('a track kept from before the tags is uploaded again once, then sent from the cache', async () => {
+  const asked = soundcloud({ tracks: { [LINK]: scTrack(1) } });
+  const issued = telegramKeepsAudio();
+  exec("INSERT INTO tracks (track_id, permalink_url, title, artist, duration, file_id, format, sends) VALUES (1, 'x', 'Track 1', 'artist', 180, 'UNTAGGED', 'hls audio/mp4 (aac_160k)', 3)");
+
+  await message(msg(USER, LINK), {});
+  const first = take().find((c) => c.method === 'sendAudio');
+  assert.equal(typeof first.params.audio, 'object', 'uploaded, not the old file_id');
+  assert.ok(asked.some((u) => u.includes('/stream/')));
+  const kept = row('SELECT file_id, tags_version, sends FROM tracks WHERE track_id = 1');
+  assert.deepEqual([kept.file_id, kept.tags_version, kept.sends], [issued[0], 1, 4]);
+
+  asked.length = 0;
+  await message(msg(OTHER, LINK), {});
+  assert.equal(take().find((c) => c.method === 'sendAudio').params.audio, issued[0]);
+  assert.ok(!asked.some((u) => u.includes('/stream/')));
 });
 
 test('a file_id Telegram no longer knows is forgotten and the track uploaded again', async () => {
