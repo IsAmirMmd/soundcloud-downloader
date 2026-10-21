@@ -45,7 +45,7 @@ tgcloud/                      ← deployed code; the only code the platform sees
     download.js               ← the bot's job: link → status → audio (file_id cache in `tracks`), `downloads` log, stats
     audio.js                  ← every audio message: sendAudio + caption + ✏️ 🎤 🖼 buttons + its `sent_audios` row, file names
     metadata.js               ← ✏️ 🎤 🖼: ask, take the answer, send a copy with the new title / artist / cover
-    tags.js                   ← title, artist, cover written into the file: ID3v2.3 (mp3), iTunes ilst (fragmented m4a)
+    tags.js                   ← title, artist, cover written into the file: ID3v2.3 (mp3), iTunes ilst (fragmented mp4)
     probe.js                  ← /sc and adminProbe: is SoundCloud usable from Telegram's servers, step by step
     settings.js               ← key/value table: secrets, drafts, flags (and the SoundCloud client_id)
     users.js                  ← users table: /start tracking, blocked, /stop, pending_action

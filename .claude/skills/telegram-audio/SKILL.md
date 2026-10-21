@@ -59,7 +59,8 @@ the SDK reference is
   written into the file) and `cover_thumb_id` (≤ 320 px, the thumbnail).
   Without one, SoundCloud's artwork at `t500x500` / `t300x300`.
 - `tagAudio` writes the same fields into the file: ID3v2.3 for mp3, iTunes
-  `moov/udta/meta/ilst` for m4a — fragmented MP4 only; it returns null (the
+  `moov/udta/meta/ilst` for mp4 (AAC files are named .mp4; old rows say
+  m4a) — fragmented MP4 only; it returns null (the
   copy goes untagged, Telegram's fields still change) for a layout with
   absolute offsets. It was checked against ffmpeg and mutagen: same decoded
   audio, the new tags read back.

@@ -54,7 +54,7 @@ the highest bitrate its preset names (`aac_160k` › `aac_96k`):
 
 1. `progressive` + `audio/mpeg` → one GET, `.mp3` (rare now)
 2. `hls` + `audio/mpeg` → segments concatenated, `.mp3`
-3. `hls` + `audio/mp4` (AAC) → `#EXT-X-MAP` init + segments, `.m4a` — the usual case
+3. `hls` + `audio/mp4` (AAC) → `#EXT-X-MAP` init + segments, `.mp4` (named so on purpose, not `.m4a`) — the usual case
 
 Never (`usable()`): `snipped` or `/preview/` transcodings, `abr_*` presets
 (adaptive, often 404 — yt-dlp skips them), DRM protocols
@@ -73,6 +73,11 @@ NO_STREAM (the formats are in `detail`); over `MAX_DURATION_SECONDS` →
 TOO_LONG. Nothing is fetched for a refused track — keep it that way.
 
 ## Adding a SoundCloud feature
+
+- **Lossless / FLAC**: SoundCloud streams none. Only an artist's original
+  upload can be (`downloadOriginal`), and `/tracks/{id}/download` answers 401
+  to the anonymous client_id (`LOGIN_REQUIRED`, seen from the cloud on two
+  tracks, 2026-10-21). Never transcode AAC into FLAC and call it lossless.
 
 - **Playlists/albums**: `resolve` gives `tracks[]` where only the first few are
   complete; the rest have just `id`. Fill them with

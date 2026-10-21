@@ -28,7 +28,7 @@ private chat: "https://on.soundcloud.com/AbC"
   ├─ artwork(track) → 300×300 JPEG thumbnail (best effort)                │
   ├─ withTags: title, artist, 500×500 cover written into the file         │
   │     (ID3 / iTunes ilst, lib/tags.js) — a saved file shows them too    │
-  ├─ sendAudio(InputFile "Artist - Title.m4a" or .mp3, title, performer…) │
+  ├─ sendAudio(InputFile "Artist - Title.mp4" or .mp3, title, performer…) │
   └─ tracks ← file_id ◀───────────────────────────────────────────────────┘
   downloads ← { status: sent | cached | failed, error, ms }; status message deleted
   (on failure: edited into the reason, ERRORS in lib/download.js)
@@ -83,21 +83,40 @@ takes the first row the track has, at the highest bitrate its preset names:
 |---|---|---|---|---|
 | 1 | `progressive` | `audio/mpeg` | `mp3_*` | one GET → `.mp3` (gone since 2026-08) |
 | 2 | `hls` | `audio/mpeg` | `mp3_*` | the segments joined → `.mp3` (MP3 frames join cleanly) |
-| 3 | `hls` | `audio/mp4; codecs="mp4a.40.2"` | `aac_160k` › `aac_96k` | `#EXT-X-MAP` init + segments → fragmented `.m4a` — **the usual case now** |
+| 3 | `hls` | `audio/mp4; codecs="mp4a.40.2"` | `aac_160k` › `aac_96k` | `#EXT-X-MAP` init + segments → fragmented `.mp4` — **the usual case now** |
 | — | `hls` | AAC | `abr_*` | never: adaptive, often 404 (yt-dlp skips it as broken) |
 | — | `ctr-`/`cbc-encrypted-hls`, `encrypted-hls` | any | | never: DRM (`NO_STREAM`) |
 | — | any | | `snipped: true`, or a `/preview/` URL | never: a 30-second Go+ preview (`PREVIEW_ONLY`) |
 
 MP3 goes first where it is still there because every Telegram client plays it
-as music; AAC 160k sounds better than MP3 128k, so swap rows if the `.m4a`
+as music; AAC 160k sounds better than MP3 128k, so swap rows if the `.mp4`
 files prove fine everywhere. A stream URL with `/0/30/` in it (a 30-second
 playlist) is refused as `PREVIEW_ONLY` before any segment is fetched. A master
 playlist (`#EXT-X-STREAM-INF`) is followed to its highest-bandwidth variant.
 
 Which formats tracks really have, seen from the cloud, is in `/sc`'s report
-(`📼 …`) and in `downloads.error = 'NO_STREAM'` counts in `/stats`. The joined
-fMP4 `.m4a` is **not yet confirmed** to play in every Telegram client: send a
-real link after the first deploy and play it on phone and desktop.
+(`📼 …`) and in `downloads.error = 'NO_STREAM'` counts in `/stats`.
+
+The AAC file is named `.mp4`, not `.m4a` (users asked; it is the same
+container). Telegram takes it as audio through `sendAudio` — checked from the
+cloud on 2026-10-21: the reply carries an `audio` object, so the player, the
+buttons and the file_id cache work — and iOS shows its embedded cover once
+saved.
+
+### No FLAC
+
+SoundCloud streams no lossless audio: AAC 160k is the best (AAC 256k for Go+
+accounts). Turning that into FLAC would make a file ~5× bigger with the same
+sound, so the bot doesn't. The one lossless source is the **original upload**,
+when its artist allows downloads (`downloadable` + `has_downloads_left` →
+`GET /tracks/{id}/download` → `redirectUri`); `downloadOriginal` in
+`lib/soundcloud.js` gets it and `originalFormat` names it from its first bytes.
+But SoundCloud gives it **only to signed-in users**: from the cloud, with the
+anonymous client_id, two such tracks of different artists both answered 401
+(`LOGIN_REQUIRED`, 2026-10-21). So there is no "original" button: it would
+need a SoundCloud account's OAuth token, the admin's own, to fetch files for
+everyone. The probe still tries it (`original` step; `adminProbe { search }`
+lists tracks that offer one), so a change on SoundCloud's side would show.
 
 ## 4. Limits
 
@@ -141,6 +160,8 @@ real link after the first deploy and play it on phone and desktop.
 | `TOO_LONG` / `TOO_BIG` | over the limits above | mixes, podcasts |
 | `RATE_LIMITED` | 429 from api-v2 | too many requests from the cloud's IPs |
 | `NO_CLIENT_ID` | no id in the page or its scripts | soundcloud.com changed its markup → fix `CLIENT_ID_PATTERNS`, or `/setclientid` |
+| `NO_ORIGINAL` | the artist offers no original upload | most tracks (only the probe asks today) |
+| `LOGIN_REQUIRED` | the original needs a signed-in user (401) | every original seen so far, anonymously |
 | `UNREACHABLE` | network error, 5xx, not JSON | SoundCloud down or unreachable from the cloud |
 | `INTERNAL` | anything else (a bug); logged with `console.error` | read it with `tgcloud run` |
 
@@ -165,7 +186,7 @@ downloaded but never sent.
 Roughly in order; each is a `lib/` module + tests + a line in this file.
 
 1. ~~**First deploy, then `/sc`**~~ — done (§4, *Seen from the cloud*). Still
-   to try: a track near 50 minutes, and playing the `.m4a` on phone and desktop.
+   to try: a track near 50 minutes.
 2. **Playlists and albums** (`NOT_TRACK` today): list the tracks
    (`/resolve` gives the first ~5 in full, the rest as ids →
    `GET /tracks?ids=1,2,3`), then send them one by one with a progress
@@ -180,3 +201,6 @@ Roughly in order; each is a `lib/` module + tests + a line in this file.
 6. **Quality / format choice** (buttons under the status message) once the
    formats seen in the cloud are known.
 7. **Opus** streams → `sendVoice`/`sendDocument`, if many tracks have only those.
+8. **Original uploads (lossless)** — only with a signed-in account (§3, *No
+   FLAC*): an admin-set OAuth token used for `/tracks/{id}/download`, sent as
+   a document. The admin's call: it uses their account for every user.
