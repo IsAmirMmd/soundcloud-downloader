@@ -6,10 +6,12 @@
 //   /sc [link]                      the admin, in the bot
 //   endpoints/adminProbe { url }    .github/workflows/check.yml and run.yml
 // For a track whose artist offers the original upload, that download is a
-// step too. findDownloadable(q) lists such tracks, to have one to try.
+// step too. findDownloadable(q) lists such tracks, to have one to try. The
+// storage channel (lib/storage.js) is checked too: can the bot post there?
 
 import { api } from 'sdk';
-import { ADMIN_ID, PROBE_TRACK_URL } from './config.js';
+import { ADMIN_ID, PROBE_TRACK_URL, STORAGE_CHAT_ID } from './config.js';
+import { storageStatus } from './storage.js';
 import { getSetting } from './settings.js';
 import { clientId, findSoundcloudUrl, getTrack, pickTranscoding, downloadAudio, downloadOriginal, apiGet } from './soundcloud.js';
 
@@ -32,6 +34,13 @@ export async function probe(url = PROBE_TRACK_URL, { download = true } = {}) {
   const report = { ok: true, url: link.url, steps: [] };
   const kept = await getSetting('sc:client_id');
   const id = await step(report, kept ? 'client_id (kept)' : 'client_id (scraped)', () => clientId());
+  if (STORAGE_CHAT_ID) {
+    await step(report, 'storage channel', async () => {
+      const s = await storageStatus();
+      if (!s.canPost) throw new Error(`${s.title || STORAGE_CHAT_ID}: ${s.status}, can't post`);
+      return `${s.title || STORAGE_CHAT_ID}: ${s.status}, can post`;
+    });
+  }
   if (!id) return report;
   const track = await step(report, 'resolve', () => getTrack(link));
   if (!track) return report;

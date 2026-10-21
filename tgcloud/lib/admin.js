@@ -35,7 +35,7 @@ export async function sendStats() {
     `🆕 Last 24h: ${fa(s.new_1d)} · last 7 days: ${fa(s.new_7d)}\n\n` +
     `🔗 Links: ${fa(d.links)} from ${fa(d.users)} users · last 24h: ${fa(d.links_1d)} from ${fa(d.users_1d)}\n` +
     `⬇️ Downloaded: ${fa(d.sent)} · ♻️ from cache: ${fa(d.cached)} · ❌ failed: ${fa(d.failed)}\n` +
-    `🎵 Tracks on Telegram: ${fa(d.tracks)}\n` +
+    `🎵 Tracks on Telegram: ${fa(d.tracks)} · in the storage channel: ${fa(d.stored)}\n` +
     `✏️ Edited copies: ${fa(d.edits)} by ${fa(d.edit_users)} users\n` +
     `⚠️ Errors: ${errors}`);
 }

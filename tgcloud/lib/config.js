@@ -18,6 +18,13 @@ export const MINI_APP_URL = '';
 // A fixed offset, because the runtime is not guaranteed to have Intl timezone data.
 export const UTC_OFFSET_MINUTES = 210;
 
+// The channel every track is uploaded to once (lib/storage.js): the cache's
+// archive, one post per track, searchable by #t<SoundCloud id>. Users get the
+// track by that post's file_id. The bot is its admin and may post. 0: no
+// channel, tracks are uploaded straight to the user who asked.
+// Check it: /sc, or Actions → Run in cloud → endpoints/adminProbe.
+export const STORAGE_CHAT_ID = -1004440110907;
+
 // The largest audio file the bot uploads. The Bot API takes 50 MB per file;
 // the rest is room for the multipart envelope and the thumbnail.
 export const MAX_AUDIO_BYTES = 49 * 1024 * 1024;

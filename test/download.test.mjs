@@ -4,7 +4,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fresh, take, failNext, mockApi, row, rows, exec, msg, groupMsg, ctxOf, soundcloud, scTrack, asText, ADMIN_ID,
+  fresh, take, failNext, mockApi, row, rows, exec, msg, groupMsg, ctxOf, soundcloud, scTrack, asText, ADMIN_ID, STORAGE_CHAT_ID,
 } from './helpers.mjs';
 import message from '../tgcloud/handlers/message.js';
 import adminProbe from '../tgcloud/endpoints/adminProbe.js';
@@ -20,31 +20,41 @@ beforeEach(fresh);
 // new one for each upload. → the file_ids handed out, in order.
 function telegramKeepsAudio() {
   const issued = [];
+  let nextMessage = 500;
   mockApi('sendAudio', (p) => {
     if (typeof p.audio !== 'string') issued.push(`F${issued.length + 1}`);
-    return { message_id: 500, chat: { id: p.chat_id }, audio: { file_id: typeof p.audio === 'string' ? p.audio : issued.at(-1) } };
+    return { message_id: nextMessage++, chat: { id: p.chat_id }, audio: { file_id: typeof p.audio === 'string' ? p.audio : issued.at(-1) } };
   });
   return issued;
 }
 
-test('a link comes back as audio: status, upload with name, cover and caption; file_id kept', async () => {
+test('a link comes back as audio: uploaded once to the storage channel, sent to the user from there', async () => {
   soundcloud({ tracks: { [LINK]: scTrack(1) } });
   const issued = telegramKeepsAudio();
   mockApi('sendMessage', (p) => ({ message_id: 77, chat: { id: p.chat_id } }));
   const m = msg(USER, `listen ${LINK}?si=x`);
   await message(m, {});
 
-  const [status, action, audio, done] = take();
+  const [status, action, store, audio, done] = take();
   assert.equal(status.method, 'sendMessage');
   assert.match(status.params.text, /⏳/);
   assert.equal(action.method, 'sendChatAction');
+
+  // The upload, into the channel: the file, its cover, a caption to find it by.
+  assert.equal(store.method, 'sendAudio');
+  assert.equal(store.params.chat_id, STORAGE_CHAT_ID);
+  // A track of today: AAC only, joined into one .mp4 (not .m4a: the same container).
+  assert.equal(store.params.audio.name, 'artist - Track 1.mp4');
+  assert.equal(store.params.audio.type, 'audio/mp4');
+  assert.equal(asText(store.params.audio.data), '<t1/aac_160k/init.mp4><0/10/t1.m4s><10/20/t1.m4s><t1/aac_160k/seg3.m4s>');
+  assert.equal(asText(store.params.thumbnail.data), '<artworks-1-t300x300.jpg>');
+  assert.match(store.params.caption, /Track 1[\s\S]*artist[\s\S]*soundcloud\.com\/artist\/track-1[\s\S]*#t1$/);
+  assert.equal(store.params.reply_markup, undefined);
+
+  // To the user: the channel's file, by its file_id.
   assert.equal(audio.method, 'sendAudio');
   assert.equal(audio.params.chat_id, USER);
-  // A track of today: AAC only, joined into one .mp4 (not .m4a: the same container).
-  assert.equal(audio.params.audio.name, 'artist - Track 1.mp4');
-  assert.equal(audio.params.audio.type, 'audio/mp4');
-  assert.equal(asText(audio.params.audio.data), '<t1/aac_160k/init.mp4><0/10/t1.m4s><10/20/t1.m4s><t1/aac_160k/seg3.m4s>');
-  assert.equal(asText(audio.params.thumbnail.data), '<artworks-1-t300x300.jpg>');
+  assert.equal(audio.params.audio, issued[0]);
   assert.deepEqual([audio.params.title, audio.params.performer, audio.params.duration], ['Track 1', 'artist', 180]);
   assert.match(audio.params.caption, /href="https:\/\/soundcloud\.com\/artist\/track-1".*@test_bot/);
   assert.equal(audio.params.reply_parameters.message_id, m.message_id);
@@ -53,6 +63,7 @@ test('a link comes back as audio: status, upload with name, cover and caption; f
 
   const t = row('SELECT * FROM tracks WHERE track_id = 1');
   assert.equal(t.file_id, issued[0]);
+  assert.equal(t.storage_message_id, 500);
   assert.equal(t.sends, 1);
   assert.equal(t.format, 'hls audio/mp4 (aac_160k)');
   assert.deepEqual(rows('SELECT user_id, url, track_id, status, error FROM downloads'),
@@ -217,15 +228,19 @@ test('/stats counts links, downloads, cache hits and failures by reason', async 
 
 test('the probe: every step from the cloud, for the admin only', async () => {
   soundcloud({ tracks: { 'https://soundcloud.com/forss/flickermood': scTrack(7) } });
+  mockApi('getChat', () => ({ id: STORAGE_CHAT_ID, type: 'channel', title: 'Archive' }));
+  mockApi('getChatMember', () => ({ status: 'administrator', can_post_messages: true }));
   const report = await adminProbe({}, ctxOf(ADMIN_ID));
   assert.equal(report.ok, true);
-  assert.deepEqual(report.steps.map((s) => s.name), ['client_id (scraped)', 'resolve', 'stream', 'download']);
+  assert.deepEqual(report.steps.map((s) => s.name), ['client_id (scraped)', 'storage channel', 'resolve', 'stream', 'download']);
+  assert.equal(report.steps[1].value, 'Archive: administrator, can post');
   assert.equal(report.steps.find((s) => s.name === 'stream').value, 'aac_160k hls audio/mp4');
   assert.match(report.steps.at(-1).value, /^\d+ bytes \(hls audio\/mp4 \(aac_160k\)\)$/);
   await assert.rejects(adminProbe({}, ctxOf(USER)), (e) => e.parameters?.code === 'FORBIDDEN');
 
+  take();
   await message(msg(ADMIN_ID, '/sc https://soundcloud.com/a/missing'), {});
-  const [sent] = take();
+  const sent = take().find((c) => c.method === 'sendMessage');
   assert.equal(sent.params.chat_id, ADMIN_ID);
   assert.match(sent.params.text, /❌ SoundCloud probe[\s\S]*❌ resolve/);
 });

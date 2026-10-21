@@ -4,9 +4,9 @@
 import * as schema from '../tgcloud/schema.js';
 import { createTables } from './sdk/db.mjs';
 import { resetApi, take as takeAll, mockFetch } from './sdk/sdk.mjs';
-import { ADMIN_ID } from '../tgcloud/lib/config.js';
+import { ADMIN_ID, STORAGE_CHAT_ID } from '../tgcloud/lib/config.js';
 
-export { ADMIN_ID };
+export { ADMIN_ID, STORAGE_CHAT_ID };
 export { rows, row, exec } from './sdk/db.mjs';
 export { calls, mockApi, failNext, mockFetch } from './sdk/sdk.mjs';
 

@@ -5,8 +5,11 @@
 // 2. The link is resolved to a track (lib/soundcloud.js).
 // 3. A track already on Telegram (`tracks`) is sent again by its file_id.
 //    Otherwise its audio is downloaded, its title, artist and cover are
-//    written into the file (lib/tags.js), it is uploaded with sendAudio, and
-//    the file_id is kept for next time.
+//    written into the file (lib/tags.js), it is uploaded once to the storage
+//    channel (lib/storage.js), and the user gets that post's file_id, kept
+//    for next time. A cached track not in the channel yet is posted there by
+//    its file_id on its next request. Without the channel, the upload goes
+//    straight to the user.
 // 4. The status message is deleted, or edited into the reason it failed.
 // Every link gets a row in `downloads`: what came of it, and how long it took.
 // The audio carries ✏️ 🎤 🖼 buttons to change its metadata (lib/audio.js,
@@ -15,6 +18,7 @@
 import { api, db, InputFile, BotApiError } from 'sdk';
 import { sql } from 'sdk/db';
 import { fileName, mimeOf, sendAudioMessage, withTags } from './audio.js';
+import { storeTrack } from './storage.js';
 import { findSoundcloudUrl, getTrack, downloadAudio, artwork, coverBytes, SoundcloudError } from './soundcloud.js';
 
 // What the user reads for each SoundcloudError code (INTERNAL: anything else).
@@ -43,21 +47,26 @@ const FILE_VERSION = 2;
 
 async function cached(trackId) {
   return db.get(sql`
-    SELECT file_id, format FROM tracks
+    SELECT file_id, format, storage_message_id FROM tracks
     WHERE track_id = ${trackId} AND coalesce(tags_version, 0) >= ${FILE_VERSION}`);
 }
 
-async function remember(track, audio, { size, format }) {
+// `audio`: { file_id, file_unique_id } of the upload; `stored`: its post in
+// the storage channel, if it went there.
+async function remember(track, audio, { size, format, stored = null }) {
   await db.run(sql`
-    INSERT INTO tracks (track_id, permalink_url, title, artist, duration, file_id, file_unique_id, size, format, tags_version, sends)
+    INSERT INTO tracks (track_id, permalink_url, title, artist, duration, file_id, file_unique_id, size, format, tags_version,
+                        storage_message_id, sends)
     VALUES (${track.id}, ${track.permalink}, ${track.title}, ${track.artist}, ${track.duration},
-            ${audio.file_id}, ${audio.file_unique_id ?? null}, ${size}, ${format}, ${FILE_VERSION}, 1)
+            ${audio.file_id}, ${audio.file_unique_id ?? null}, ${size}, ${format}, ${FILE_VERSION},
+            ${stored?.message_id ?? null}, 1)
     ON CONFLICT (track_id) DO UPDATE SET
       file_id = excluded.file_id,
       file_unique_id = excluded.file_unique_id,
       size = excluded.size,
       format = excluded.format,
       tags_version = excluded.tags_version,
+      storage_message_id = excluded.storage_message_id,
       sends = coalesce(tracks.sends, 0) + 1,
       last_sent_at = unixepoch()`);
 }
@@ -66,6 +75,17 @@ const sentAgain = (trackId) => db.run(sql`
   UPDATE tracks SET sends = coalesce(sends, 0) + 1, last_sent_at = unixepoch() WHERE track_id = ${trackId}`);
 
 const forget = (trackId) => db.run(sql`DELETE FROM tracks WHERE track_id = ${trackId}`);
+
+// A track kept from before the channel, posted there by its file_id (no new
+// upload). Never throws: the user already has the track.
+async function archive(track, fileId) {
+  try {
+    const stored = await storeTrack(track, fileId);
+    if (stored) await db.run(sql`UPDATE tracks SET storage_message_id = ${stored.message_id} WHERE track_id = ${track.id}`);
+  } catch (e) {
+    console.error(e);
+  }
+}
 
 // Never throws: logging must not turn a delivered track into an error.
 async function log(row) {
@@ -95,13 +115,15 @@ function sendAudio(message, track, audio, { ext, thumbnail } = {}) {
 }
 
 // The track as audio: the kept file_id when there is one, otherwise
-// downloaded and uploaded. → 'cached' | 'sent'
+// downloaded, posted to the storage channel and sent from there.
+// → 'cached' | 'sent'
 async function deliver(message, track) {
   const hit = await cached(track.id);
   if (hit) {
     try {
       await sendAudio(message, track, hit.file_id, { ext: /audio\/mp4/.test(hit.format ?? '') ? 'mp4' : 'mp3' });
       await sentAgain(track.id);
+      if (!hit.storage_message_id) await archive(track, hit.file_id);
       return 'cached';
     } catch (e) {
       // A file_id Telegram no longer knows: forget it and upload again.
@@ -115,6 +137,14 @@ async function deliver(message, track) {
   const [thumbnail, cover] = await Promise.all([artwork(track), coverBytes(track.artworkUrl, 't500x500', 1024 * 1024)]);
   const bytes = withTags(file.bytes, file.ext, { title: track.title, artist: track.artist, cover });
   const upload = new InputFile(bytes, fileName(track, file.ext), { type: mimeOf(file.ext) });
+  // Once into the channel, then to the user by that file_id; straight to the
+  // user when the channel can't take it.
+  const stored = await storeTrack(track, upload, { thumbnail });
+  if (stored) {
+    await sendAudio(message, track, stored.file_id, { ext: file.ext });
+    await remember(track, stored, { size: bytes.length, format: file.format, stored });
+    return 'sent';
+  }
   const sent = await sendAudio(message, track, upload, { ext: file.ext, thumbnail });
   if (sent?.audio?.file_id) await remember(track, sent.audio, { size: bytes.length, format: file.format });
   return 'sent';
@@ -162,12 +192,14 @@ export async function downloadStats() {
     FROM downloads`);
   const tracksKept = await db.get(sql`SELECT count(*) AS n FROM tracks`);
   const edits = await db.get(sql`SELECT count(*) AS n, count(DISTINCT chat_id) AS users FROM sent_audios WHERE edited = 1`);
+  const stored = await db.get(sql`SELECT count(*) AS n FROM tracks WHERE storage_message_id IS NOT NULL`);
   const errors = await db.all(sql`
     SELECT error, count(*) AS n FROM downloads WHERE status = 'failed' GROUP BY error ORDER BY n DESC, error`);
   // Raw SQL: aggregates may come back as strings.
   return {
     ...Object.fromEntries(Object.entries(s ?? {}).map(([k, v]) => [k, Number(v ?? 0)])),
     tracks: Number(tracksKept?.n ?? 0),
+    stored: Number(stored?.n ?? 0),
     edits: Number(edits?.n ?? 0),
     edit_users: Number(edits?.users ?? 0),
     errors: errors.map((e) => ({ error: e.error ?? '—', n: Number(e.n) })),

@@ -65,7 +65,7 @@ async function edit(audioId, data, answer) {
 
 test('every audio comes with ✏️ 🎤 🖼 buttons and is remembered', async () => {
   await message(msg(USER, LINK), {});
-  const audio = take().find((c) => c.method === 'sendAudio');
+  const audio = take().find((c) => c.method === 'sendAudio' && c.params.chat_id === USER);
   assert.deepEqual(audio.params.reply_markup, META_BUTTONS);
   assert.deepEqual(audio.params.reply_markup.inline_keyboard.flat().map((b) => b.text), ['✏️ اسم آهنگ', '🎤 خواننده', '🖼 کاور']);
   const r = row('SELECT * FROM sent_audios');
