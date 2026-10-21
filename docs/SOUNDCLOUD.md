@@ -17,6 +17,8 @@ private chat: "https://on.soundcloud.com/AbC"
   │    └─ GET api-v2 /resolve?url=…&client_id=…  → kind: track | playlist | user
   ├─ tracks has this track_id?  ── yes → sendAudio(file_id) ──────────────┐
   │                               (400 → forget it, go on below)          │
+  │                               not in the channel yet → post it there  │
+  │                               by that file_id (no new upload)         │
   ├─ sendChatAction upload_voice                                          │
   ├─ downloadAudio(track)                                                 │
   │    ├─ policy / duration checks (nothing downloaded when refused)      │
@@ -28,8 +30,11 @@ private chat: "https://on.soundcloud.com/AbC"
   ├─ artwork(track) → 300×300 JPEG thumbnail (best effort)                │
   ├─ withTags: title, artist, 500×500 cover written into the file         │
   │     (ID3 / iTunes ilst, lib/tags.js) — a saved file shows them too    │
-  ├─ sendAudio(InputFile "Artist - Title.mp4" or .mp3, title, performer…) │
-  └─ tracks ← file_id ◀───────────────────────────────────────────────────┘
+  ├─ storeTrack: sendAudio(InputFile "Artist - Title.mp4" or .mp3, …) to   │
+  │     the storage channel (STORAGE_CHAT_ID) — caption: name, artist,     │
+  │     link, #t<id>; refused → the upload goes straight to the user       │
+  ├─ sendAudio(the channel post's file_id) to the user, ✏️ 🎤 🖼 under it  │
+  └─ tracks ← file_id, storage_message_id ◀───────────────────────────────┘
   downloads ← { status: sent | cached | failed, error, ms }; status message deleted
   (on failure: edited into the reason, ERRORS in lib/download.js)
 ```
@@ -194,9 +199,9 @@ Roughly in order; each is a `lib/` module + tests + a line in this file.
 3. **Per-user limits**: N downloads per hour from `downloads`, to stay under
    SoundCloud's rate limits.
 4. **Inline mode** (`@bot <search>`): `GET /search/tracks?q=…`, results from
-   `tracks` (already on Telegram) as cached audio. Needs a private storage
-   channel to upload new ones to (see the calculator bot's `IMAGE_CHAT_ID`)
-   and `handlers/inline_query.js`, `chosen_inline_result.js`.
+   `tracks` (already on Telegram) as cached audio. New ones can be uploaded to
+   the storage channel (`lib/storage.js`, there since 2026-10-21) for a
+   file_id; needs `handlers/inline_query.js`, `chosen_inline_result.js`.
 5. **Groups**: answer a link when the bot is mentioned or replied to.
 6. **Quality / format choice** (buttons under the status message) once the
    formats seen in the cloud are known.

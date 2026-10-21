@@ -175,6 +175,9 @@ and the roadmap.
   the Telegram side in `tgcloud/lib/download.js`. Tests run on a fake
   SoundCloud (`soundcloud()` / `scTrack()` in `test/helpers.mjs`), never the
   network.
+- A new track is uploaded once to the storage channel (`STORAGE_CHAT_ID`,
+  `tgcloud/lib/storage.js`) and users get that post's `file_id`; if the
+  channel refuses, it goes straight to the user and the admin is warned.
 - Every audio the bot sends goes through `sendAudioMessage` (`tgcloud/lib/audio.js`):
   it adds the ✏️ 🎤 🖼 buttons and a `sent_audios` row, which
   `tgcloud/lib/metadata.js` needs to re-upload a copy with a new title, artist or

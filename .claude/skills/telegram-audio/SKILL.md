@@ -16,7 +16,15 @@ the SDK reference is
 1. **Answer the link at once** with a status message ("⏳ …", a reply to the
    link). A download can take many seconds; silence looks broken.
 2. **Cache first.** `tracks.file_id` by SoundCloud `track_id`. A hit is sent
-   by `file_id` — no SoundCloud request beyond resolve, no upload.
+   by `file_id` — no SoundCloud request beyond resolve, no upload. A hit
+   without `storage_message_id` is then posted to the storage channel by
+   that file_id (`archive`, never throws).
+2b. **Upload once, into the storage channel** (`storeTrack`,
+   `lib/storage.js`, `STORAGE_CHAT_ID`): the post's caption has name,
+   artist, link and `#t<id>`, no buttons; the user then gets the post's
+   `file_id`. A refused channel post returns null: upload straight to the
+   user instead, and the admin is warned at most once an hour
+   (`storage:warned_at` in settings). Edited copies never go there.
 3. **Stale file_id** → `sendAudio` throws `BotApiError` 400: delete the row
    (`forget`) and upload again. Any other error goes up.
 4. **Tag, then upload.** `withTags` (`lib/audio.js`) writes title, artist and

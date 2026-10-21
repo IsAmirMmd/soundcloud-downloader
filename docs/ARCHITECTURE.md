@@ -40,12 +40,13 @@ tgcloud/                      ← deployed code; the only code the platform sees
     adminProbe.js             ← admin-only: every step of a SoundCloud download, from the cloud (check.yml, run.yml)
     adminSyncCommands.js      ← admin-only: sets the "/" command menus (deploy.yml, after each deploy)
   lib/                        ← all the logic; one module per feature
-    config.js                 ← constants (ADMIN_ID, size/duration limits, PROBE_TRACK_URL): no env vars exist
+    config.js                 ← constants (ADMIN_ID, STORAGE_CHAT_ID, size/duration limits, PROBE_TRACK_URL): no env vars exist
     soundcloud.js             ← SoundCloud api-v2: links, client_id (scraped, kept), resolve, streams, download
     download.js               ← the bot's job: link → status → audio (file_id cache in `tracks`), `downloads` log, stats
     audio.js                  ← every audio message: sendAudio + caption + ✏️ 🎤 🖼 buttons + its `sent_audios` row, file names
     metadata.js               ← ✏️ 🎤 🖼: ask, take the answer, send a copy with the new title / artist / cover
     tags.js                   ← title, artist, cover written into the file: ID3v2.3 (mp3), iTunes ilst (fragmented mp4)
+    storage.js                ← the storage channel: every track uploaded there once, users get its file_id; admin warned if it fails
     probe.js                  ← /sc and adminProbe: is SoundCloud usable from Telegram's servers, step by step
     settings.js               ← key/value table: secrets, drafts, flags (and the SoundCloud client_id)
     users.js                  ← users table: /start tracking, blocked, /stop, pending_action
