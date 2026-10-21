@@ -37,8 +37,9 @@ const ERRORS = {
 // What goes into an uploaded file. A kept file_id from an older version is
 // not reused: the track is downloaded and uploaded again, once. Bump it when
 // the files change. 1: title, artist and cover written in (until then, the
-// cover was only Telegram's thumbnail, and saved files had none).
-const FILE_VERSION = 1;
+// cover was only Telegram's thumbnail, and saved files had none). 2: AAC
+// files named .mp4 instead of .m4a.
+const FILE_VERSION = 2;
 
 async function cached(trackId) {
   return db.get(sql`
@@ -99,7 +100,7 @@ async function deliver(message, track) {
   const hit = await cached(track.id);
   if (hit) {
     try {
-      await sendAudio(message, track, hit.file_id, { ext: /audio\/mp4/.test(hit.format ?? '') ? 'm4a' : 'mp3' });
+      await sendAudio(message, track, hit.file_id, { ext: /audio\/mp4/.test(hit.format ?? '') ? 'mp4' : 'mp3' });
       await sentAgain(track.id);
       return 'cached';
     } catch (e) {

@@ -16,14 +16,15 @@ export const META_BUTTONS = { inline_keyboard: [
   [{ text: '🖼 کاور', callback_data: 'meta:cover' }],
 ] };
 
-// "Artist - Title.m4a" (or .mp3), without characters file systems refuse.
+// "Artist - Title.mp4" (or .mp3), without characters file systems refuse.
 export function fileName({ id, artist, title }, ext) {
   const base = [artist, title].filter(Boolean).join(' - ')
     .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
   return `${base || `soundcloud-${id ?? 'track'}`}.${ext}`;
 }
 
-export const mimeOf = (ext) => (ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg');
+// mp3 → audio/mpeg; mp4 (m4a in rows from before the rename) → audio/mp4.
+export const mimeOf = (ext) => (ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4');
 
 // The file with its title, artist and cover written in (lib/tags.js): the
 // thumbnail sendAudio takes is Telegram's own, and a saved file shows only
@@ -64,7 +65,7 @@ export async function sendAudioMessage(chatId, audio, info, { thumbnail = null, 
 // only say the file is too old to edit.
 async function remember(chatId, sent, info) {
   if (!sent?.audio?.file_id) return;
-  const ext = info.ext ?? (/mp4|m4a|aac/i.test(sent.audio.mime_type ?? '') ? 'm4a' : 'mp3');
+  const ext = info.ext ?? (/mp4|m4a|aac/i.test(sent.audio.mime_type ?? '') ? 'mp4' : 'mp3');
   try {
     await db.run(sql`
       INSERT INTO sent_audios (chat_id, message_id, track_id, permalink_url, file_id, ext, title, artist, duration,

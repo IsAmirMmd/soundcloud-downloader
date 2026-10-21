@@ -40,8 +40,8 @@ test('a link comes back as audio: status, upload with name, cover and caption; f
   assert.equal(action.method, 'sendChatAction');
   assert.equal(audio.method, 'sendAudio');
   assert.equal(audio.params.chat_id, USER);
-  // A track of today: AAC only, joined into one .m4a.
-  assert.equal(audio.params.audio.name, 'artist - Track 1.m4a');
+  // A track of today: AAC only, joined into one .mp4 (not .m4a: the same container).
+  assert.equal(audio.params.audio.name, 'artist - Track 1.mp4');
   assert.equal(audio.params.audio.type, 'audio/mp4');
   assert.equal(asText(audio.params.audio.data), '<t1/aac_160k/init.mp4><0/10/t1.m4s><10/20/t1.m4s><t1/aac_160k/seg3.m4s>');
   assert.equal(asText(audio.params.thumbnail.data), '<artworks-1-t300x300.jpg>');
@@ -98,7 +98,7 @@ function mp4Tags(bytes) {
   }));
 }
 
-test('the saved file shows the cover too: title, artist and the 500 px artwork are written into the m4a', async () => {
+test('the saved file shows the cover too: title, artist and the 500 px artwork are written into the mp4', async () => {
   soundcloud({ tracks: { [LINK]: scTrack(1) }, mp4: true });
   telegramKeepsAudio();
   await message(msg(USER, LINK), {});
@@ -112,7 +112,7 @@ test('the saved file shows the cover too: title, artist and the 500 px artwork a
   const file = Buffer.from(audio.params.audio.data);
   for (const name of ['0/10/t1.m4s', '10/20/t1.m4s', 't1/aac_160k/seg3.m4s']) assert.ok(file.includes(Buffer.from(`<${name}>`)), name);
   assert.equal(asText(audio.params.thumbnail.data), '<artworks-1-t300x300.jpg>');   // Telegram's own, as before
-  assert.equal(row('SELECT tags_version FROM tracks WHERE track_id = 1').tags_version, 1);
+  assert.equal(row('SELECT tags_version FROM tracks WHERE track_id = 1').tags_version, 2);
 });
 
 test('and into the mp3, as an ID3 tag before the audio', async () => {
@@ -137,7 +137,7 @@ test('a track kept from before the tags is uploaded again once, then sent from t
   assert.equal(typeof first.params.audio, 'object', 'uploaded, not the old file_id');
   assert.ok(asked.some((u) => u.includes('/stream/')));
   const kept = row('SELECT file_id, tags_version, sends FROM tracks WHERE track_id = 1');
-  assert.deepEqual([kept.file_id, kept.tags_version, kept.sends], [issued[0], 1, 4]);
+  assert.deepEqual([kept.file_id, kept.tags_version, kept.sends], [issued[0], 2, 4]);
 
   asked.length = 0;
   await message(msg(OTHER, LINK), {});
@@ -230,7 +230,22 @@ test('the probe: every step from the cloud, for the admin only', async () => {
   assert.match(sent.params.text, /❌ SoundCloud probe[\s\S]*❌ resolve/);
 });
 
+test('the probe tries the original upload when the artist offers it; search lists such tracks', async () => {
+  soundcloud({ tracks: {
+    'https://soundcloud.com/forss/flickermood': scTrack(7, { original: 'flac' }),
+    'https://soundcloud.com/a/plain': scTrack(8),
+  } });
+  const report = await adminProbe({}, ctxOf(ADMIN_ID));
+  assert.equal(report.track.downloadable, true);
+  const original = report.steps.find((s) => s.name === 'original');
+  assert.equal(original.ok, true);
+  assert.match(original.value, /^FLAC, \d+ bytes, lossless$/);
+
+  const found = await adminProbe({ search: 'anything' }, ctxOf(ADMIN_ID));
+  assert.deepEqual(found.map((t) => t.url), ['https://soundcloud.com/artist/track-7']);
+});
+
 test('fileName: artist and title, without characters file systems refuse', () => {
   assert.equal(fileName({ id: 1, artist: 'A/C', title: 'Mix: "Live" <1>' }, 'mp3'), 'A C - Mix Live 1.mp3');
-  assert.equal(fileName({ id: 5, artist: '', title: '' }, 'm4a'), 'soundcloud-5.m4a');
+  assert.equal(fileName({ id: 5, artist: '', title: '' }, 'mp4'), 'soundcloud-5.mp4');
 });

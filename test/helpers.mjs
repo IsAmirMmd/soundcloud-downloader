@@ -76,8 +76,10 @@ const STREAMS = {
 };
 
 // A track as api-v2's /resolve returns it. `streams` are keys of STREAMS;
-// `secret`: a private track's secret_token, which its streams then require.
-export function scTrack(id, { streams = ['aac_160k', 'aac_96k', 'abr_sq'], policy = 'ALLOW', seconds = 180, snipped = false, secret = null, ...extra } = {}) {
+// `secret`: a private track's secret_token, which its streams then require;
+// `original`: the format of the upload its artist lets anyone download
+// ('flac', 'wav', 'aiff', 'mp3', 'mp4'), or 'login' when only signed-in users may.
+export function scTrack(id, { streams = ['aac_160k', 'aac_96k', 'abr_sq'], policy = 'ALLOW', seconds = 180, snipped = false, secret = null, original = null, ...extra } = {}) {
   return {
     kind: 'track',
     id,
@@ -90,6 +92,9 @@ export function scTrack(id, { streams = ['aac_160k', 'aac_96k', 'abr_sq'], polic
     policy,
     track_authorization: `auth-${id}`,
     ...(secret ? { secret_token: secret } : {}),
+    downloadable: Boolean(original),
+    has_downloads_left: Boolean(original),
+    original,   // not api-v2's: what the fake serves at /tracks/<id>/download
     media: {
       transcodings: streams.map((s) => ({
         url: `https://api-v2.soundcloud.com/media/soundcloud:tracks:${id}/${s}/stream/${STREAMS[s].protocol}`,
@@ -105,6 +110,16 @@ export function scTrack(id, { streams = ['aac_160k', 'aac_96k', 'abr_sq'], polic
 
 // The bytes of a file the fake serves: its name, so a test can tell what was joined.
 export const fakeBytes = (name) => new Uint8Array(Buffer.from(`<${name}>`));
+
+// An original upload: the first bytes of its format, then its name.
+const MAGIC = {
+  flac: 'fLaC\0\0\0\x22',
+  wav: 'RIFF\x24\0\0\0WAVEfmt ',
+  aiff: 'FORM\0\0\0\x24AIFFCOMM',
+  mp3: 'ID3\x03\0\0\0\0\0\0',
+  mp4: '\0\0\0\x18ftypM4A ',
+};
+export const originalBytes = (id, format) => new Uint8Array(Buffer.from(`${MAGIC[format]}<t${id}.${format}>`, 'latin1'));
 
 // MP4 boxes, for a fake that serves real fragmented MP4 (soundcloud({ mp4: true })).
 export function mp4Box(type, ...parts) {
@@ -176,6 +191,16 @@ export function soundcloud({ tracks = {}, short = {}, clientId = CLIENT_ID, page
       if (base === 'https://api-v2.soundcloud.com/resolve') {
         return tracks[params.url] ? reply(200, tracks[params.url]) : reply(404, '{}');
       }
+      if (base === 'https://api-v2.soundcloud.com/search/tracks') {
+        return reply(200, { collection: Object.values(tracks).filter((t) => t.kind === 'track'), next_href: null });
+      }
+      const original = /\/tracks\/(\d+)\/download$/.exec(base);
+      if (original) {
+        const track = Object.values(tracks).find((t) => t.id === Number(original[1]));
+        if (!track?.original) return reply(404, '{}');
+        if (track.original === 'login') return reply(401, '{}');
+        return reply(200, { redirectUri: `https://cf-download.sndcdn.com/t${track.id}.${track.original}?Policy=p` });
+      }
       const m = /\/media\/soundcloud:tracks:(\d+)\/([\w-]+)\/stream\/([\w-]+)$/.exec(base);
       if (m) {
         const [, id, key, protocol] = m;
@@ -190,6 +215,8 @@ export function soundcloud({ tracks = {}, short = {}, clientId = CLIENT_ID, page
       }
     }
 
+    const upload = /^https:\/\/cf-download\.sndcdn\.com\/t(\d+)\.(\w+)$/.exec(base);
+    if (upload) return reply(200, originalBytes(Number(upload[1]), upload[2]));
     const media = /^https:\/\/cf-media\.sndcdn\.com\/(t\d+\.mp3)$/.exec(base);
     if (media) return reply(200, fakeBytes(media[1]), { headers: { 'content-length': String(fakeBytes(media[1]).length) } });
     const HLS = /^(https:\/\/(?:cf-hls-media\.sndcdn\.com\/playlist|playback\.media-streaming\.soundcloud\.cloud))\/(t\d+)\/([\w-]+)(\/v\d)?\/playlist\.m3u8$/;

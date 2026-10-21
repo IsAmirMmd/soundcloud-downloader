@@ -7,7 +7,7 @@
 //
 // - mp3: one ID3v2.3 tag (TIT2, TPE1, APIC) replaces any ID3v2 tag at the
 //   start and an ID3v1 tag at the end.
-// - m4a: an iTunes-style moov/udta/meta/ilst (©nam, ©ART, covr) replaces any
+// - mp4 (also m4a): an iTunes-style moov/udta/meta/ilst (©nam, ©ART, covr) replaces any
 //   moov/udta. Only fragmented MP4 is rewritten — what SoundCloud's AAC HLS
 //   joins into: growing moov moves every byte after it, and a file whose
 //   boxes point at absolute positions (stco/co64 entries, a tfhd
@@ -163,7 +163,7 @@ export function tagM4a(bytes, meta) {
 export function tagAudio(bytes, ext, meta) {
   try {
     if (ext === 'mp3') return tagMp3(bytes, meta);
-    if (ext === 'm4a') return tagM4a(bytes, meta);
+    if (ext === 'mp4' || ext === 'm4a') return tagM4a(bytes, meta);
   } catch (e) {
     console.error(e);
   }

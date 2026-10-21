@@ -71,7 +71,7 @@ test('every audio comes with ✏️ 🎤 🖼 buttons and is remembered', async 
   const r = row('SELECT * FROM sent_audios');
   assert.deepEqual(
     [r.chat_id, r.track_id, r.file_id, r.ext, r.title, r.artist, r.duration, r.edited],
-    [USER, 1, 'F1', 'm4a', 'Track 1', 'artist', 180, 0]);
+    [USER, 1, 'F1', 'mp4', 'Track 1', 'artist', 180, 0]);
   assert.equal(r.artwork_url, 'https://i1.sndcdn.com/artworks-1-large.jpg');
   assert.equal(r.permalink_url, 'https://soundcloud.com/artist/track-1');
 
@@ -102,7 +102,7 @@ test('the new title comes back as a new copy: same sound, new name and file name
   const upload = calls.find((c) => c.method === 'sendAudio');
   assert.equal(upload.params.title, 'شب‌های تهران');
   assert.equal(upload.params.performer, 'artist');
-  assert.equal(upload.params.audio.name, 'artist - شب‌های تهران.m4a');
+  assert.equal(upload.params.audio.name, 'artist - شب‌های تهران.mp4');
   assert.equal(upload.params.audio.type, 'audio/mp4');
   assert.deepEqual([...upload.params.audio.data], [...telegram.files.F1]);   // fake bytes: no MP4 to tag
   assert.equal(asText(upload.params.thumbnail.data), '<artworks-1-t300x300.jpg>');

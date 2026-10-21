@@ -64,7 +64,7 @@ export const sent_audios = table('sent_audios', {
   track_id:       integer('track_id'),                  // the SoundCloud track it came from
   permalink_url:  text('permalink_url'),                // its page: the caption, and a new download for files over 20 MB
   file_id:        text('file_id').notNull(),
-  ext:            text('ext'),                          // 'mp3' | 'm4a'
+  ext:            text('ext'),                          // 'mp3' | 'mp4' ('m4a' in rows from before the rename)
   title:          text('title'),
   artist:         text('artist'),
   duration:       integer('duration'),                  // seconds

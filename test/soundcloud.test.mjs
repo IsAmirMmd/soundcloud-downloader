@@ -3,9 +3,10 @@
 
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { fresh, soundcloud, scTrack, asText, row, exec, mockFetch, CLIENT_ID } from './helpers.mjs';
+import { fresh, soundcloud, scTrack, asText, row, exec, mockFetch, originalBytes, CLIENT_ID } from './helpers.mjs';
 import {
   findSoundcloudUrl, clientIdIn, clientId, getTrack, pickTranscoding, parseM3u8, downloadAudio, artwork, SoundcloudError,
+  originalFormat, downloadOriginal,
 } from '../tgcloud/lib/soundcloud.js';
 
 beforeEach(fresh);
@@ -94,8 +95,8 @@ test('pickTranscoding: MP3 where it is left, else AAC at its best bitrate; never
   assert.equal(pick(['aac_160k', 'hls-mp3', 'progressive']), 'mp3_0_0 progressive mp3');
   assert.equal(pick(['aac_160k', 'hls-mp3']), 'mp3_1_0 hls mp3');
   // Today's usual track: the 160k AAC, whatever the order, never abr_sq.
-  assert.equal(pick(['abr_sq', 'aac_96k', 'aac_160k']), 'aac_160k hls m4a');
-  assert.equal(pick(['abr_sq', 'aac_96k']), 'aac_96k hls m4a');
+  assert.equal(pick(['abr_sq', 'aac_96k', 'aac_160k']), 'aac_160k hls mp4');
+  assert.equal(pick(['abr_sq', 'aac_96k']), 'aac_96k hls mp4');
   assert.equal(pick(['abr_sq']), null);
   assert.equal(pick(['drm', 'opus']), null);
   assert.equal(pick(['aac_160k'], { snipped: true }), null);
@@ -132,7 +133,7 @@ test('downloadAudio: a track of today — AAC 160k, init segment then the segmen
   const asked = soundcloud({ tracks: { [LINK]: scTrack(1, { streams: ['abr_sq', 'aac_96k', 'aac_160k'] }) } });
   const file = await downloadAudio(await getTrack(LINK));
   assert.equal(asText(file.bytes), '<t1/aac_160k/init.mp4><0/10/t1.m4s><10/20/t1.m4s><t1/aac_160k/seg3.m4s>');
-  assert.deepEqual([file.ext, file.type, file.format], ['m4a', 'audio/mp4', 'hls audio/mp4 (aac_160k)']);
+  assert.deepEqual([file.ext, file.type, file.format], ['mp4', 'audio/mp4', 'hls audio/mp4 (aac_160k)']);
   assert.ok(!asked.some((u) => u.includes('/abr_sq/') || u.includes('/aac_96k/')));
 });
 
@@ -181,7 +182,7 @@ test('downloadAudio: a private track sends its secret with the stream request', 
   const secretLink = 'https://soundcloud.com/artist/track-1/s-AbC12';
   const asked = soundcloud({ tracks: { [secretLink]: scTrack(1, { secret: 's-AbC12' }) } });
   const file = await downloadAudio(await getTrack(secretLink));
-  assert.equal(file.ext, 'm4a');
+  assert.equal(file.ext, 'mp4');
   assert.ok(asked.some((u) => u.includes('/stream/') && u.includes('secret_token=s-AbC12')));
 
   // A public track whose name starts with "s-" is not a secret link.
@@ -217,4 +218,44 @@ test('artwork: the 300×300 JPEG, or null when there is none', async () => {
   assert.equal(asText(await artwork(track)), '<artworks-1-t300x300.jpg>');
   assert.equal(await artwork({ ...track, artworkUrl: null }), null);
   assert.equal(await artwork({ ...track, artworkUrl: 'https://i1.sndcdn.com/artworks-404-large.jpg' }), null);
+});
+
+test('originalFormat: what an upload is, from its first bytes', () => {
+  const formats = Object.fromEntries(['flac', 'wav', 'aiff', 'mp3', 'mp4'].map((f) => [f, originalFormat(originalBytes(1, f))]));
+  assert.deepEqual(formats.flac, { ext: 'flac', type: 'audio/flac', name: 'FLAC', lossless: true });
+  assert.deepEqual(formats.wav, { ext: 'wav', type: 'audio/wav', name: 'WAV', lossless: true });
+  assert.deepEqual(formats.aiff, { ext: 'aiff', type: 'audio/aiff', name: 'AIFF', lossless: true });
+  assert.equal(formats.mp3.lossless, false);
+  assert.equal(formats.mp4.ext, 'mp4');
+  assert.equal(originalFormat(new Uint8Array(Buffer.from('<something else entirely>'))).ext, 'bin');
+});
+
+test('downloadOriginal: the upload the artist offers, as it is; refused when there is none or it needs a login', async () => {
+  const asked = soundcloud({ tracks: {
+    'https://soundcloud.com/a/lossless': scTrack(1, { original: 'flac' }),
+    'https://soundcloud.com/a/none': scTrack(2),
+    'https://soundcloud.com/a/login': scTrack(3, { original: 'login' }),
+    'https://soundcloud.com/a/secret/s-Xy1': scTrack(4, { original: 'wav', secret: 's-Xy1' }),
+  } });
+  const flac = await downloadOriginal(await getTrack('https://soundcloud.com/a/lossless'));
+  assert.deepEqual([flac.ext, flac.name, flac.lossless], ['flac', 'FLAC', true]);
+  assert.deepEqual([...flac.bytes], [...originalBytes(1, 'flac')]);
+
+  const none = await getTrack('https://soundcloud.com/a/none');
+  assert.equal(none.downloadable, false);
+  asked.length = 0;
+  await assert.rejects(downloadOriginal(none), isCode('NO_ORIGINAL'));
+  assert.deepEqual(asked, [], 'nothing asked for a track without an original');
+
+  await assert.rejects(downloadOriginal(await getTrack('https://soundcloud.com/a/login')), isCode('LOGIN_REQUIRED'));
+
+  asked.length = 0;
+  const wav = await downloadOriginal(await getTrack('https://soundcloud.com/a/secret/s-Xy1'));
+  assert.equal(wav.name, 'WAV');
+  assert.ok(asked.some((u) => u.includes('/tracks/4/download') && u.includes('secret_token=s-Xy1')));
+});
+
+test('downloadOriginal: an upload over the limit is TOO_BIG', async () => {
+  soundcloud({ tracks: { [LINK]: scTrack(1, { original: 'wav' }) } });
+  await assert.rejects(downloadOriginal(await getTrack(LINK), { limit: 8 }), isCode('TOO_BIG'));
 });

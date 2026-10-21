@@ -7,6 +7,7 @@
 //   getTrack(url)             resolve a link to a track (SoundcloudError otherwise)
 //   downloadAudio(track)      the track's audio bytes, from the best stream it has
 //   artwork(track)            a 300×300 JPEG for the audio's thumbnail, or null
+//   downloadOriginal(track)   the file the artist uploaded (often lossless), when they allow it
 //
 // The runtime is not a browser: no URL, URLSearchParams or TextDecoder are
 // assumed, only `fetch` from the sdk. Whether SoundCloud answers Telegram's
@@ -37,6 +38,8 @@ const HEADERS = {
 //   TOO_BIG       more than MAX_AUDIO_BYTES once downloaded
 //   RATE_LIMITED  api-v2 answered 429
 //   NO_CLIENT_ID  soundcloud.com no longer carries a client_id we can find
+//   NO_ORIGINAL   the artist doesn't let anyone download the original upload
+//   LOGIN_REQUIRED  the original is there, but only for signed-in SoundCloud users
 //   UNREACHABLE   network errors, 5xx, anything unexpected from SoundCloud
 export class SoundcloudError extends Error {
   constructor(code, detail = '') {
@@ -189,6 +192,7 @@ function trackOf(t) {
     transcodings: t.media?.transcodings ?? [],
     trackAuthorization: t.track_authorization ?? null,
     secretToken: t.secret_token ?? null,                                 // a private track's, needed for its streams
+    downloadable: Boolean(t.downloadable) && t.has_downloads_left !== false, // the artist's original upload is offered
   };
 }
 
@@ -210,12 +214,13 @@ export async function getTrack(link) {
 // The streams the bot can turn into a file, best first. SoundCloud removed
 // progressive MP3 in August 2026 and keeps HLS MP3 only on tracks not yet
 // moved to AAC; most tracks now have just `aac_160k` / `aac_96k` (AAC in
-// fragmented MP4: init + segments join into one .m4a) and `abr_sq`. MP3 still
+// fragmented MP4: init + segments join into one .mp4) and `abr_sq`. MP3 still
 // goes first where it exists: every Telegram client plays it as music.
 const FORMATS = [
   { protocol: 'progressive', mime: 'audio/mpeg', ext: 'mp3', type: 'audio/mpeg' },
   { protocol: 'hls', mime: 'audio/mpeg', ext: 'mp3', type: 'audio/mpeg' },
-  { protocol: 'hls', mime: 'audio/mp4', ext: 'm4a', type: 'audio/mp4' },
+  // .mp4, not .m4a: the same container (audio only), named as users asked.
+  { protocol: 'hls', mime: 'audio/mp4', ext: 'mp4', type: 'audio/mp4' },
 ];
 
 // Never used: previews (`snipped`, or a /preview/ URL: Go+ tracks), the
@@ -365,6 +370,47 @@ export async function downloadAudio(track, { limit = MAX_AUDIO_BYTES } = {}) {
   const bytes = await download(urls, limit);
   const preset = transcoding.preset ? ` (${transcoding.preset})` : '';
   return { bytes, ext: format.ext, type: format.type, format: `${format.protocol} ${format.type}${preset}` };
+}
+
+// ---------- the original upload ----------
+
+const text4 = (b, i) => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+
+// What an original upload is, from its first bytes (the name it was uploaded
+// under is not trusted): { ext, type, name, lossless }.
+const ORIGINAL_FORMATS = [
+  { test: (b) => text4(b, 0) === 'fLaC', ext: 'flac', type: 'audio/flac', name: 'FLAC', lossless: true },
+  { test: (b) => text4(b, 0) === 'RIFF' && text4(b, 8) === 'WAVE', ext: 'wav', type: 'audio/wav', name: 'WAV', lossless: true },
+  { test: (b) => text4(b, 0) === 'FORM' && /^AIF[FC]$/.test(text4(b, 8)), ext: 'aiff', type: 'audio/aiff', name: 'AIFF', lossless: true },
+  { test: (b) => text4(b, 0) === 'OggS', ext: 'ogg', type: 'audio/ogg', name: 'OGG', lossless: false },
+  { test: (b) => text4(b, 4) === 'ftyp', ext: 'mp4', type: 'audio/mp4', name: 'MP4', lossless: false },
+  { test: (b) => text4(b, 0).startsWith('ID3') || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0), ext: 'mp3', type: 'audio/mpeg', name: 'MP3', lossless: false },
+];
+
+export function originalFormat(bytes) {
+  const { ext, type, name, lossless } = ORIGINAL_FORMATS.find((f) => bytes.length >= 12 && f.test(bytes))
+    ?? { ext: 'bin', type: 'application/octet-stream', name: '?', lossless: false };
+  return { ext, type, name, lossless };
+}
+
+// The file the artist uploaded, offered when they allow downloads
+// (track.downloadable): the only lossless audio SoundCloud has (WAV, FLAC,
+// AIFF — or whatever they uploaded); its streams are AAC 160k at best.
+// → { bytes, ext, type, name, lossless }
+export async function downloadOriginal(track, { limit = MAX_AUDIO_BYTES } = {}) {
+  if (!track.downloadable) throw new SoundcloudError('NO_ORIGINAL');
+  let answer;
+  try {
+    answer = await apiGet(`/tracks/${track.id}/download`, { secret_token: track.secretToken });
+  } catch (e) {
+    if (e.code === 'NOT_FOUND' || e.code === 'BLOCKED') throw new SoundcloudError('NO_ORIGINAL', e.detail);
+    // 401 even with a fresh client_id: SoundCloud wants a signed-in user for this one.
+    if (e.code === 'UNREACHABLE' && /HTTP 401/.test(e.detail)) throw new SoundcloudError('LOGIN_REQUIRED', e.detail);
+    throw e;
+  }
+  if (!answer?.redirectUri) throw new SoundcloudError('NO_ORIGINAL', 'no redirectUri');
+  const bytes = await download([answer.redirectUri], limit);
+  return { bytes, ...originalFormat(bytes) };
 }
 
 // A SoundCloud artwork URL at another size (`t300x300`, `t500x500`, …) as a

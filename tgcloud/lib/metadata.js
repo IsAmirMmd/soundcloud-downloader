@@ -102,7 +102,8 @@ async function cover(info, thumb) {
 // downloaded again from SoundCloud for a bigger file. → { bytes, ext }
 async function audioBytes(row) {
   try {
-    return { bytes: await api.getFileContent(row.file_id), ext: row.ext ?? 'mp3' };
+    // An AAC copy from before the rename (.m4a) comes back as .mp4.
+    return { bytes: await api.getFileContent(row.file_id), ext: row.ext === 'm4a' ? 'mp4' : row.ext ?? 'mp3' };
   } catch (e) {
     if (!(e instanceof BotApiError) || !row.permalink_url) throw e;
     const file = await downloadAudio(await getTrack(row.permalink_url));

@@ -4,12 +4,14 @@
 //   { }                                      the default track (config.js PROBE_TRACK_URL)
 //   { url: "https://soundcloud.com/…" }      another link
 //   { url: "…", download: false }            stop before downloading
+//   { search: "free download wav" }          tracks whose original upload is offered
 
 import { requireAdmin, badInput } from '../lib/access.js';
-import { probe } from '../lib/probe.js';
+import { probe, findDownloadable } from '../lib/probe.js';
 
 export default async function (input, ctx) {
   requireAdmin(ctx);
+  if (typeof input.search === 'string' && input.search.trim()) return findDownloadable(input.search.trim());
   if (input.url != null && typeof input.url !== 'string') throw badInput('url must be a string');
   return probe(input.url || undefined, { download: input.download !== false });
 }
