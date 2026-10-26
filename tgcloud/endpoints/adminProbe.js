@@ -21,7 +21,8 @@ export default async function (input, ctx) {
       next: found.next,
       dropped: found.dropped,
       tracks: found.tracks.map(line),
-      refused: found.refused.map((t) => `${t.refusal}: ${line(t)}`),
+      // With each stream's protocol: why none of them was usable.
+      refused: found.refused.map((t) => `${t.refusal}: ${line(t)} ${t.permalink} [${t.transcodings.map((x) => `${x.preset} ${x.format?.protocol}${x.snipped ? ' snipped' : ''}`).join(', ')}]`),
     };
   }
   if (input.url != null && typeof input.url !== 'string') throw badInput('url must be a string');
