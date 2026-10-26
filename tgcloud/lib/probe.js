@@ -1,7 +1,7 @@
 // Is SoundCloud usable from where the bot runs? Each step of a download,
 // timed, with the error it stopped at: the client_id, resolving a link, the
 // stream formats, the stream's URL and the audio itself (downloaded, never
-// sent). Only the cloud can answer this — Telegram's servers may be refused
+// sent), and whether searching the track's name finds it. Only the cloud can answer this — Telegram's servers may be refused
 // by hosts the developer reaches fine — so it runs there:
 //   /sc [link]                      the admin, in the bot
 //   endpoints/adminProbe { url }    .github/workflows/check.yml and run.yml
@@ -13,7 +13,7 @@ import { api } from 'sdk';
 import { ADMIN_ID, PROBE_TRACK_URL, STORAGE_CHAT_ID } from './config.js';
 import { storageStatus } from './storage.js';
 import { getSetting } from './settings.js';
-import { clientId, findSoundcloudUrl, getTrack, pickTranscoding, downloadAudio, downloadOriginal, apiGet } from './soundcloud.js';
+import { clientId, findSoundcloudUrl, getTrack, searchTracks, pickTranscoding, downloadAudio, downloadOriginal, apiGet } from './soundcloud.js';
 
 async function step(report, name, fn) {
   const t = Date.now();
@@ -45,6 +45,13 @@ export async function probe(url = PROBE_TRACK_URL, { download = true } = {}) {
   const track = await step(report, 'resolve', () => getTrack(link));
   if (!track) return report;
   report.steps.at(-1).value = `track ${track.id}`;
+  // Search (lib/search.js, lib/inline.js): does the track's own name find it?
+  const q = `${track.artist} ${track.title}`.trim();
+  const found = await step(report, 'search', () => searchTracks(q, { limit: 10 }));
+  if (found) {
+    report.steps.at(-1).value = `"${q}": ${found.tracks.length} of 10 deliverable, ` +
+      `${found.tracks.some((t) => t.id === track.id) ? 'this track among them' : 'this track not among them'}${found.next != null ? ', more pages' : ''}`;
+  }
   report.track = { id: track.id, title: track.title, artist: track.artist, duration: track.duration, policy: track.policy, downloadable: track.downloadable };
   report.formats = track.transcodings.map((t) => `${t.preset} ${t.format?.protocol} ${t.format?.mime_type}${t.snipped ? ' (snipped)' : ''}`);
   const picked = pickTranscoding(track.transcodings);

@@ -224,7 +224,9 @@ real one. The real check runs where the bot runs:
   `npx tgcloud run endpoints/adminProbe '{ url: "https://soundcloud.com/…" }' --ctx '{ initData: { user: { id: 199419831 } } }'`
 
 Each step reports `ok`, `ms` and its value or error: `client_id (kept|scraped)`
-→ `resolve` → `stream` (the format picked) → `download` (bytes). The audio is
+→ `resolve` → `search` (does the track's own name find it, and how many of
+10 results the bot can deliver) → `stream` (the format picked) → `download`
+(bytes). The audio is
 downloaded but never sent.
 
 ## 7. Roadmap

@@ -233,7 +233,8 @@ test('the probe: every step from the cloud, for the admin only', async () => {
   mockApi('getChatMember', () => ({ status: 'administrator', can_post_messages: true }));
   const report = await adminProbe({}, ctxOf(ADMIN_ID));
   assert.equal(report.ok, true);
-  assert.deepEqual(report.steps.map((s) => s.name), ['client_id (scraped)', 'storage channel', 'resolve', 'stream', 'download']);
+  assert.deepEqual(report.steps.map((s) => s.name), ['client_id (scraped)', 'storage channel', 'resolve', 'search', 'stream', 'download']);
+  assert.equal(report.steps.find((s) => s.name === 'search').value, '"artist Track 7": 1 of 10 deliverable, this track among them');
   assert.equal(report.steps[1].value, 'Archive: administrator, can post');
   assert.equal(report.steps.find((s) => s.name === 'stream').value, 'aac_160k hls audio/mp4');
   assert.match(report.steps.at(-1).value, /^\d+ bytes \(hls audio\/mp4 \(aac_160k\)\)$/);
