@@ -233,19 +233,22 @@ function refusal(t) {
 
 // Tracks for `q`, `limit` of them from `offset` in SoundCloud's own order,
 // without those the bot could only refuse: blocked, Go+ previews, too long,
-// nothing but DRM streams. → { tracks, next, dropped } — `next` is the offset
-// of the next page, null on the last one, so a page can hold fewer than
-// `limit`; `dropped` counts the rest by reason ({ PREVIEW_ONLY: 3 }, for the probe).
+// nothing but DRM streams. → { tracks, next, refused, dropped } — `next` is
+// the offset of the next page, null on the last one, so a page can hold fewer
+// than `limit`; `refused` are the rest, each with its `refusal` code, and
+// `dropped` counts them by code ({ PREVIEW_ONLY: 3 }, for the probe).
 export async function searchTracks(q, { offset = 0, limit = 10 } = {}) {
   const found = await apiGet('/search/tracks', { q, offset, limit });
   const tracks = [];
+  const refused = [];
   const dropped = {};
   for (const t of (found?.collection ?? []).filter((x) => x?.kind === 'track').map(trackOf)) {
     const why = refusal(t);
-    if (why) dropped[why] = (dropped[why] ?? 0) + 1;
-    else tracks.push(t);
+    if (!why) { tracks.push(t); continue; }
+    refused.push({ ...t, refusal: why });
+    dropped[why] = (dropped[why] ?? 0) + 1;
   }
-  return { tracks, next: found?.next_href ? offset + limit : null, dropped };
+  return { tracks, next: found?.next_href ? offset + limit : null, refused, dropped };
 }
 
 // ---------- streams ----------

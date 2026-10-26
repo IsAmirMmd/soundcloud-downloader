@@ -271,6 +271,7 @@ test('the probe\'s q: what search finds, and what it drops and why', async () =>
   const found = await adminProbe({ q: 'anything' }, ctxOf(ADMIN_ID));
   assert.deepEqual(found.tracks, ['1 artist — Track 1 (180 s, ALLOW, aac_160k/aac_96k/abr_sq)']);
   assert.deepEqual(found.dropped, { PREVIEW_ONLY: 1, TOO_LONG: 1 });
+  assert.deepEqual(found.refused.map((t) => t.split(' (')[0]), ['PREVIEW_ONLY: 2 artist — Track 2', 'TOO_LONG: 3 artist — Track 3']);
   assert.equal(found.next, null);
 });
 

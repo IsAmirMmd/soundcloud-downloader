@@ -16,7 +16,13 @@ export default async function (input, ctx) {
   if (typeof input.search === 'string' && input.search.trim()) return findDownloadable(input.search.trim());
   if (typeof input.q === 'string' && input.q.trim()) {
     const found = await searchTracks(input.q.trim(), { offset: Number(input.offset) || 0, limit: Number(input.limit) || 20 });
-    return { ...found, tracks: found.tracks.map((t) => `${t.id} ${t.artist} — ${t.title} (${t.duration} s, ${t.policy}, ${t.transcodings.map((x) => x.preset).join('/') || 'no streams listed'})`) };
+    const line = (t) => `${t.id} ${t.artist} — ${t.title} (${t.duration} s, ${t.policy}, ${t.transcodings.map((x) => x.preset).join('/') || 'no streams listed'})`;
+    return {
+      next: found.next,
+      dropped: found.dropped,
+      tracks: found.tracks.map(line),
+      refused: found.refused.map((t) => `${t.refusal}: ${line(t)}`),
+    };
   }
   if (input.url != null && typeof input.url !== 'string') throw badInput('url must be a string');
   return probe(input.url || undefined, { download: input.download !== false });
