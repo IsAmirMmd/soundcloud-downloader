@@ -218,18 +218,34 @@ export async function getTrackById(id) {
   return trackOf(found);
 }
 
+// Why the bot could only refuse this search result (the SoundcloudError
+// code it would end in), or null. A result without transcodings is given the
+// benefit of the doubt: the track itself is fetched again before downloading.
+function refusal(t) {
+  if (t.policy === 'BLOCK') return 'BLOCKED';
+  if (t.policy === 'SNIP') return 'PREVIEW_ONLY';
+  if (t.duration > MAX_DURATION_SECONDS) return 'TOO_LONG';
+  if (t.transcodings.length && !pickTranscoding(t.transcodings)) {
+    return t.transcodings.every((x) => x.snipped) ? 'PREVIEW_ONLY' : 'NO_STREAM';
+  }
+  return null;
+}
+
 // Tracks for `q`, `limit` of them from `offset` in SoundCloud's own order,
 // without those the bot could only refuse: blocked, Go+ previews, too long,
-// nothing but DRM streams. → { tracks, next } — `next` is the offset of the
-// next page, null on the last one. So a page can hold fewer than `limit`.
+// nothing but DRM streams. → { tracks, next, dropped } — `next` is the offset
+// of the next page, null on the last one, so a page can hold fewer than
+// `limit`; `dropped` counts the rest by reason ({ PREVIEW_ONLY: 3 }, for the probe).
 export async function searchTracks(q, { offset = 0, limit = 10 } = {}) {
   const found = await apiGet('/search/tracks', { q, offset, limit });
-  const tracks = (found?.collection ?? [])
-    .filter((t) => t?.kind === 'track')
-    .map(trackOf)
-    .filter((t) => t.policy !== 'BLOCK' && t.policy !== 'SNIP' && t.duration <= MAX_DURATION_SECONDS
-      && (!t.transcodings.length || pickTranscoding(t.transcodings)));
-  return { tracks, next: found?.next_href ? offset + limit : null };
+  const tracks = [];
+  const dropped = {};
+  for (const t of (found?.collection ?? []).filter((x) => x?.kind === 'track').map(trackOf)) {
+    const why = refusal(t);
+    if (why) dropped[why] = (dropped[why] ?? 0) + 1;
+    else tracks.push(t);
+  }
+  return { tracks, next: found?.next_href ? offset + limit : null, dropped };
 }
 
 // ---------- streams ----------

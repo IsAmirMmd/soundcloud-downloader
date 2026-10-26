@@ -219,7 +219,9 @@ real one. The real check runs where the bot runs:
 - **In the bot:** the admin sends `/sc` (the default track,
   `PROBE_TRACK_URL`) or `/sc <link>`.
 - **From GitHub:** Actions → *Run in cloud* → `endpoints/adminProbe` with `{}`
-  or `{ url: "…" }`. `check.yml` runs it on every branch other than `main`.
+  or `{ url: "…" }`; `{ q: "…" }` shows what the bot's search finds for a
+  text, and what it dropped and why (`BLOCKED`, `PREVIEW_ONLY`, `TOO_LONG`,
+  `NO_STREAM`). `check.yml` runs it on every branch other than `main`.
 - **From a terminal:**
   `npx tgcloud run endpoints/adminProbe '{ url: "https://soundcloud.com/…" }' --ctx '{ initData: { user: { id: 199419831 } } }'`
 

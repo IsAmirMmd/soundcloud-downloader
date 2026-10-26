@@ -262,6 +262,18 @@ test('the probe tries the original upload when the artist offers it; search list
   assert.deepEqual(found.map((t) => t.url), ['https://soundcloud.com/artist/track-7']);
 });
 
+test('the probe\'s q: what search finds, and what it drops and why', async () => {
+  soundcloud({ tracks: {
+    'https://soundcloud.com/a/one': scTrack(1),
+    'https://soundcloud.com/a/goplus': scTrack(2, { policy: 'SNIP', snipped: true }),
+    'https://soundcloud.com/a/long': scTrack(3, { seconds: 4 * 3600 }),
+  } });
+  const found = await adminProbe({ q: 'anything' }, ctxOf(ADMIN_ID));
+  assert.deepEqual(found.tracks, ['1 artist — Track 1 (180 s, ALLOW, aac_160k/aac_96k/abr_sq)']);
+  assert.deepEqual(found.dropped, { PREVIEW_ONLY: 1, TOO_LONG: 1 });
+  assert.equal(found.next, null);
+});
+
 test('fileName: artist and title, without characters file systems refuse', () => {
   assert.equal(fileName({ id: 1, artist: 'A/C', title: 'Mix: "Live" <1>' }, 'mp3'), 'A C - Mix Live 1.mp3');
   assert.equal(fileName({ id: 5, artist: '', title: '' }, 'mp4'), 'soundcloud-5.mp4');

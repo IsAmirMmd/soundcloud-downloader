@@ -50,7 +50,8 @@ export async function probe(url = PROBE_TRACK_URL, { download = true } = {}) {
   const found = await step(report, 'search', () => searchTracks(q, { limit: 10 }));
   if (found) {
     report.steps.at(-1).value = `"${q}": ${found.tracks.length} of 10 deliverable, ` +
-      `${found.tracks.some((t) => t.id === track.id) ? 'this track among them' : 'this track not among them'}${found.next != null ? ', more pages' : ''}`;
+      `${found.tracks.some((t) => t.id === track.id) ? 'this track among them' : 'this track not among them'}${found.next != null ? ', more pages' : ''}` +
+      (Object.keys(found.dropped).length ? `; dropped: ${Object.entries(found.dropped).map(([k, n]) => `${k} ${n}`).join(', ')}` : '');
   }
   report.track = { id: track.id, title: track.title, artist: track.artist, duration: track.duration, policy: track.policy, downloadable: track.downloadable };
   report.formats = track.transcodings.map((t) => `${t.preset} ${t.format?.protocol} ${t.format?.mime_type}${t.snipped ? ' (snipped)' : ''}`);
