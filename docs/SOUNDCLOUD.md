@@ -56,7 +56,8 @@ private chat: "shab tehran" (no link, no command, ≥ 2 characters)
   │    GET api-v2 /search/tracks?q&offset&limit → collection, next_href
   │    without BLOCK / SNIP / too long / no usable stream
   └─ sendMessage: one button per track "🎵 Title — Artist · ۳:۳۴" (dl:<id>),
-     ◀️ ▶️ (sr:<search id>:<offset>) edit the same message
+     ◀️ ▶️ (sr:<search id>:<offset>) edit the same message; the results left
+     out are named under the list with why (🔒 DRM, 💎 Go+, ⏱, 🚫)
 
 dl:<id> pressed → sendTrack(…, () => getTrackById(id), { via: 'search' })
 
@@ -82,7 +83,12 @@ Seen from the cloud (2026-10-26, `adminProbe { q }`): `shadmehr` → 20 of 20
 deliverable (Persian titles included), 232 ms; `Forss Flickermood` → 2
 deliverable, 8 `TOO_LONG` (DJ mixes over 50 minutes) and 1 `NO_STREAM`.
 Search results carry `media.transcodings` and `policy`, so the filter works
-on them without fetching each track.
+on them without fetching each track. Order is SoundCloud's own relevance;
+the bot never re-ranks. A major label's original is often **DRM only**:
+`cry for me` → SoundCloud's first result, The Weeknd's own track, has just
+`cbc-encrypted-hls` / `ctr-encrypted-hls` streams (NO_STREAM), while its
+remixes play in the clear. That is why hidden results are named: the user
+otherwise sees only remixes and thinks the search missed the song.
 
 ## 2. api-v2 and the client_id
 

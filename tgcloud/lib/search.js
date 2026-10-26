@@ -7,7 +7,7 @@
 
 import { api, db } from 'sdk';
 import { sql } from 'sdk/db';
-import { esc, clip, clock } from './html.js';
+import { esc, clip, clock, fa } from './html.js';
 import { ERRORS, sendTrack } from './download.js';
 import { searchTracks, getTrackById, SoundcloudError } from './soundcloud.js';
 
@@ -16,7 +16,32 @@ const PAGE = 8;
 // Shorter texts get the hint instead (handlers/message.js).
 const MIN_QUERY = 2;
 
-const label = (t) => `🎵 ${clip(t.artist ? `${t.title} — ${t.artist}` : t.title, 48)} · ${clock(t.duration)}`;
+const name = (t) => clip(t.artist ? `${t.title} — ${t.artist}` : t.title, 48);
+const label = (t) => `🎵 ${name(t)} · ${clock(t.duration)}`;
+
+// Results left out (searchTracks' refusal codes), named under the list: a
+// user who searched for a label's release and sees only remixes should know
+// the original was found and why it isn't there.
+const HIDDEN = {
+  NO_STREAM: ['🔒', 'رمزگذاری‌شده (DRM)'],
+  PREVIEW_ONLY: ['💎', 'فقط پیش‌نمایش Go+'],
+  TOO_LONG: ['⏱', 'بیشتر از ۵۰ دقیقه'],
+  BLOCKED: ['🚫', 'در دسترس نیست'],
+};
+const HIDDEN_SHOWN = 4;
+
+function hiddenNote(refused) {
+  if (!refused.length) return '';
+  const lines = refused.slice(0, HIDDEN_SHOWN).map((t) => {
+    const [icon, why] = HIDDEN[t.refusal] ?? ['⚠️', 'قابل دانلود نیست'];
+    return `${icon} ${esc(name(t))} · ${why}`;
+  });
+  if (refused.length > HIDDEN_SHOWN) lines.push(`و ${fa(refused.length - HIDDEN_SHOWN)} تای دیگه`);
+  return '\n\n<b>این‌ها پیدا شدن ولی قابل دانلود نیستن:</b>\n' + lines.join('\n') +
+    (refused.some((t) => t.refusal === 'NO_STREAM')
+      ? '\n<i>نسخه‌ی اصلی آهنگ‌های لیبل‌های بزرگ رو ساندکلاد معمولاً رمزگذاری‌شده پخش می‌کنه؛ هیچ دانلودری نمی‌تونه بگیردش. ریمیکس‌ها و نسخه‌های دیگه قابل دانلودن.</i>'
+      : '');
+}
 
 // A page of results for `q` from `offset` → { text, reply_markup? }.
 async function page(searchId, q, offset) {
@@ -31,14 +56,20 @@ async function page(searchId, q, offset) {
     ...(offset > 0 ? [{ text: '◀️ قبلی', callback_data: `sr:${searchId}:${Math.max(0, offset - PAGE)}` }] : []),
     ...(found.next != null ? [{ text: 'بعدی ▶️', callback_data: `sr:${searchId}:${found.next}` }] : []),
   ];
+  const note = hiddenNote(found.refused);
   if (!found.tracks.length && offset === 0) {
-    return { text: `🔍 برای «${esc(q)}» آهنگی پیدا نکردم که بشه دانلودش کرد.\nیه اسم دیگه امتحان کن یا لینک ترک رو بفرست.`, parse_mode: 'HTML' };
+    return {
+      text: `🔍 برای «${esc(q)}» آهنگی پیدا نکردم که بشه دانلودش کرد.\nیه اسم دیگه امتحان کن یا لینک ترک رو بفرست.${note}`,
+      parse_mode: 'HTML',
+      ...(nav.length ? { reply_markup: { inline_keyboard: [nav] } } : {}),
+    };
   }
   return {
-    text: found.tracks.length
+    text: (found.tracks.length
       ? `🔎 نتیجه‌های «${esc(q)}»\nروی یه آهنگ بزن تا دانلود بشه 👇`
-      : `🔎 «${esc(q)}»: این صفحه چیزی نداشت که بشه دانلودش کرد.`,
+      : `🔎 «${esc(q)}»: این صفحه چیزی نداشت که بشه دانلودش کرد.`) + note,
     parse_mode: 'HTML',
+    link_preview_options: { is_disabled: true },
     reply_markup: { inline_keyboard: [
       ...found.tracks.map((t) => [{ text: label(t), callback_data: `dl:${t.id}` }]),
       ...(nav.length ? [nav] : []),

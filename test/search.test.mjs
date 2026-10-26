@@ -38,9 +38,33 @@ test('a name brings the results as buttons, without what the bot can\'t deliver,
   assert.deepEqual(list.filter((b) => b.callback_data.startsWith('dl:')).map((b) => b.callback_data),
     ['dl:1', 'dl:4', 'dl:5', 'dl:6', 'dl:7', 'dl:8']);
   assert.equal(list[0].text, '🎵 Shab — artist · ۳:۳۴');
+  // …and the two left out are named, with why.
+  assert.match(reply.params.text, /این‌ها پیدا شدن ولی قابل دانلود نیستن:<\/b>\n💎 Track 2 — artist · فقط پیش‌نمایش Go\+\n🚫 Track 3 — artist · در دسترس نیست$/);
   const search = row('SELECT * FROM searches');
   assert.deepEqual([search.user_id, search.query], [USER, 'shab tehran']);
   assert.deepEqual(list.slice(-1).map((b) => [b.text, b.callback_data]), [['بعدی ▶️', `sr:${search.id}:8`]]);
+});
+
+test('a label\'s original, DRM only, is named and explained; the remixes are the list', async () => {
+  soundcloud({ tracks: {
+    'https://soundcloud.com/theweeknd/cry-for-me': scTrack(20, { title: 'Cry For Me', user: { username: 'The Weeknd' }, streams: ['drm'] }),
+    'https://soundcloud.com/x/remix': scTrack(21, { title: 'The Weeknd - Cry For Me (Remix)' }),
+  } });
+  await message(msg(USER, 'cry for me'), {});
+  const reply = take().find((c) => c.method === 'sendMessage');
+  assert.deepEqual(buttons(reply).map((b) => b.callback_data), ['dl:21']);
+  assert.match(reply.params.text, /🔒 Cry For Me — The Weeknd · رمزگذاری‌شده \(DRM\)/);
+  assert.match(reply.params.text, /لیبل‌های بزرگ/);
+});
+
+test('a first page with nothing to download still names what it found, and ▶️ goes on', async () => {
+  soundcloud({ tracks: Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9].map((id) => [`https://soundcloud.com/a/t${id}`, scTrack(id, { streams: id < 9 ? ['drm'] : undefined })])) });
+  await message(msg(USER, 'all locked'), {});
+  const reply = take().find((c) => c.method === 'sendMessage');
+  assert.match(reply.params.text, /پیدا نکردم/);
+  assert.match(reply.params.text, /🔒 Track 1 — artist[\s\S]*🔒 Track 4 — artist · رمزگذاری‌شده \(DRM\)\nو ۴ تای دیگه/);
+  const id = row('SELECT id FROM searches').id;
+  assert.deepEqual(buttons(reply).map((b) => b.callback_data), [`sr:${id}:8`]);
 });
 
 test('▶️ and ◀️ page through in the same message', async () => {
