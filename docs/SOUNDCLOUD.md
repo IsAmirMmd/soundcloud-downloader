@@ -78,6 +78,12 @@ any chat: "@bot shab tehran"   (BotFather /setinline)
 Inline audio has no ✏️ 🎤 🖼 buttons: the message is in someone else's chat
 and its edits would need a `sent_audios` row there.
 
+Seen from the cloud (2026-10-26, `adminProbe { q }`): `shadmehr` → 20 of 20
+deliverable (Persian titles included), 232 ms; `Forss Flickermood` → 2
+deliverable, 8 `TOO_LONG` (DJ mixes over 50 minutes) and 1 `NO_STREAM`.
+Search results carry `media.transcodings` and `policy`, so the filter works
+on them without fetching each track.
+
 ## 2. api-v2 and the client_id
 
 SoundCloud closed its official API to new apps, so the bot talks to
@@ -244,9 +250,8 @@ Roughly in order; each is a `lib/` module + tests + a line in this file.
 3. **Per-user limits**: N downloads per hour from `downloads`, to stay under
    SoundCloud's rate limits.
 4. ~~**Search and inline mode**~~ — done 2026-10-26 (§1, *Search*). Still to
-   see in the cloud: how often `/search/tracks` answers with tracks the bot
-   can't deliver, and whether SoundCloud rate-limits search from the cloud's
-   IPs (a cached inline answer, `CACHE_SECONDS`, keeps it down).
+   see: whether SoundCloud rate-limits search from the cloud's IPs once
+   people type inline (a cached inline answer, `CACHE_SECONDS`, keeps it down).
 5. **Groups**: answer a link when the bot is mentioned or replied to.
 6. **Quality / format choice** (buttons under the status message) once the
    formats seen in the cloud are known.
