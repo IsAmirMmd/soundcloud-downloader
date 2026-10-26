@@ -165,8 +165,8 @@ nullable; pushing to `main` deploys.
 
 ## This bot: SoundCloud downloader
 
-A SoundCloud track link sent to the bot in a private chat comes back as an
-audio message. Before touching that path, read
+A SoundCloud track link (or a song's name, searched) sent to the bot in a
+private chat comes back as an audio message. Before touching that path, read
 [docs/SOUNDCLOUD.md](docs/SOUNDCLOUD.md): the flow, api-v2 and the scraped
 `client_id`, which stream formats are used, Telegram's limits, the error codes
 and the roadmap.
@@ -178,7 +178,11 @@ and the roadmap.
 - A new track is uploaded once to the storage channel (`STORAGE_CHAT_ID`,
   `tgcloud/lib/storage.js`) and users get that post's `file_id`; if the
   channel refuses, it goes straight to the user and the admin is warned.
-- Every audio the bot sends goes through `sendAudioMessage` (`tgcloud/lib/audio.js`):
+- A name instead of a link is a search: `tgcloud/lib/search.js` in the bot
+  (results as buttons), `tgcloud/lib/inline.js` for `@bot <name>` in any
+  chat (needs BotFather `/setinline` and `/setinlinefeedback`). A result goes
+  down the same path as a link (`sendTrack` in `lib/download.js`).
+- Every audio the bot sends from its own chat goes through `sendAudioMessage` (`tgcloud/lib/audio.js`):
   it adds the ✏️ 🎤 🖼 buttons and a `sent_audios` row, which
   `tgcloud/lib/metadata.js` needs to re-upload a copy with a new title, artist or
   cover (written into the file too, `tgcloud/lib/tags.js`).

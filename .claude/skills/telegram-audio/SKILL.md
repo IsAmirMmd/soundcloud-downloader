@@ -1,6 +1,6 @@
 ---
 name: telegram-audio
-description: Delivering audio from this Telegram Serverless bot — sendAudio with InputFile vs a kept file_id, the `tracks` file_id cache, thumbnails, file names, captions, the ✏️ 🎤 🖼 buttons that re-upload a copy with a new title / artist / cover (sent_audios, lib/metadata.js, ID3 / iTunes tags in lib/tags.js), the "⏳" status message and chat actions, Bot API limits (50 MB upload, 20 MB getFile, 200 KB thumbnail), and handling BotApiError (400 stale file_id, 403 blocked, 429). Use when changing tgcloud/lib/download.js or anything that sends files, adding playlist/album delivery, inline audio results, group replies, or debugging why an audio message wasn't delivered or looks wrong.
+description: Delivering audio from this Telegram Serverless bot — sendAudio with InputFile vs a kept file_id, the `tracks` file_id cache, thumbnails, file names, captions, the ✏️ 🎤 🖼 buttons that re-upload a copy with a new title / artist / cover (sent_audios, lib/metadata.js, ID3 / iTunes tags in lib/tags.js), the "⏳" status message and chat actions, Bot API limits (50 MB upload, 20 MB getFile, 200 KB thumbnail), and handling BotApiError (400 stale file_id, 403 blocked, 429). Use when changing tgcloud/lib/download.js or anything that sends files, adding playlist/album delivery, changing inline mode (lib/inline.js), group replies, or debugging why an audio message wasn't delivered or looks wrong.
 ---
 
 # Sending audio to Telegram from this bot
@@ -112,16 +112,30 @@ with a cap, or hand the rest to a later run (a cron job via
 `.github/workflows/scheduled.yml`, or a button the user presses for the next
 batch) — never an unbounded loop.
 
-## Groups and inline mode (roadmap)
+## Inline mode (lib/inline.js)
 
-- **Groups**: answer only when mentioned or replied to; `reply_parameters` to
-  the link; no hint replies to other messages. Rate-limit per chat.
-- **Inline** (`@bot <query>`): results must reference audio already on
-  Telegram (`InlineQueryResultCachedAudio` with `tracks.file_id`), so new
-  tracks are first uploaded to a private storage channel the bot admins (a
-  `STORAGE_CHAT_ID` in `config.js`, like the calculator bot's
-  `IMAGE_CHAT_ID`). Needs BotFather `/setinline` (and `/setinlinefeedback`
-  for counting sends).
+- `@bot <name>` → `answerInline`: a track with a current `tracks.file_id`
+  (`keptFiles`, `FILE_VERSION` checked) is an `InlineQueryResultCachedAudio`;
+  any other is an article ("🎵 Title / 🎤 Artist") with a ⏳ button
+  `il:<id>`. The button is what gives the sent message an
+  `inline_message_id`; without one it could never be edited.
+- **An inline message takes no upload** (`editMessageMedia` with an
+  inline_message_id accepts a file_id or URL only), so `storedFile(track)`
+  downloads the track into the storage channel first and fills the message
+  with the post's file_id. No channel → `NO_STORAGE`: the message says to
+  send the link to the bot.
+- Filled on `chosen_inline_result` (BotFather `/setinlinefeedback`) or when
+  ⏳ is pressed; a second fill is "message is not modified", ignored. A kept
+  file_id Telegram refuses (400) → `forgetFile`, upload again once.
+- No ✏️ 🎤 🖼 on inline audio and no `sent_audios` row: the message is in
+  someone else's chat. Every fill is logged in `downloads` with
+  `via = 'inline'`.
+- `answerInlineQuery` 400 "query is too old" → ignored (the user typed on).
+
+## Groups (roadmap)
+
+- Answer only when mentioned or replied to; `reply_parameters` to the link;
+  no hint replies to other messages. Rate-limit per chat.
 
 ## Testing
 

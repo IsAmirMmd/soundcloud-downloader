@@ -138,8 +138,8 @@ export const forgetFile = (trackId) => forget(trackId);
 // The kept file_ids of these tracks → { [track id]: file_id }, for inline
 // results that can be the audio itself.
 export async function keptFiles(trackIds) {
-  if (!trackIds.length) return {};
   const ids = trackIds.map(Number).filter(Number.isFinite);
+  if (!ids.length) return {};
   const kept = await db.all(sql`
     SELECT track_id, file_id FROM tracks
     WHERE track_id IN (${ids.map((id) => sql`${id}`).reduce((a, b) => sql`${a}, ${b}`)})

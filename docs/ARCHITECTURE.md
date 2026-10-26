@@ -31,8 +31,10 @@ in the cloud (`run`).
 tgcloud/                      ← deployed code; the only code the platform sees
   schema.js                   ← every table, as named exports
   handlers/                   ← one file per update type; thin routers
-    message.js                ← /start (+ deep links), /stop, admin commands, pending answers (feedback, ✏️ 🎤 🖼), SoundCloud links
-    callback_query.js         ← inline buttons, routed by callback_data prefix (menu:, feedback, meta:)
+    message.js                ← /start (+ deep links), /stop, admin commands, pending answers (feedback, ✏️ 🎤 🖼), SoundCloud links, search by name
+    callback_query.js         ← inline buttons, routed by callback_data prefix (menu:, feedback, meta:, dl:, sr:, il:)
+    inline_query.js           ← `@bot <name>` in any chat → lib/inline.js (BotFather /setinline)
+    chosen_inline_result.js   ← an inline result sent → its ⏳ message becomes the audio (BotFather /setinlinefeedback)
     my_chat_member.js         ← the bot blocked/unblocked (private) or added/removed (groups, channels)
   endpoints/                  ← one file per Mini App call; thin: authorize → lib → JSON
     me.js                     ← who is calling (isAdmin)
@@ -41,8 +43,10 @@ tgcloud/                      ← deployed code; the only code the platform sees
     adminSyncCommands.js      ← admin-only: sets the "/" command menus (deploy.yml, after each deploy)
   lib/                        ← all the logic; one module per feature
     config.js                 ← constants (ADMIN_ID, STORAGE_CHAT_ID, size/duration limits, PROBE_TRACK_URL): no env vars exist
-    soundcloud.js             ← SoundCloud api-v2: links, client_id (scraped, kept), resolve, streams, download
-    download.js               ← the bot's job: link → status → audio (file_id cache in `tracks`), `downloads` log, stats
+    soundcloud.js             ← SoundCloud api-v2: links, client_id (scraped, kept), resolve, search, streams, download
+    download.js               ← the bot's job: link / search result → status → audio (file_id cache in `tracks`), `downloads` log, stats
+    search.js                 ← a name in the bot → results as buttons (dl:<track>), ◀️ ▶️ pages (sr:<search>:<offset>), `searches`
+    inline.js                 ← inline mode: kept tracks as cached audio, others as a ⏳ message filled by editMessageMedia (il:<track>)
     audio.js                  ← every audio message: sendAudio + caption + ✏️ 🎤 🖼 buttons + its `sent_audios` row, file names
     metadata.js               ← ✏️ 🎤 🖼: ask, take the answer, send a copy with the new title / artist / cover
     tags.js                   ← title, artist, cover written into the file: ID3v2.3 (mp3), iTunes ilst (fragmented mp4)
@@ -55,7 +59,7 @@ tgcloud/                      ← deployed code; the only code the platform sees
     menu.js                   ← the /start menu as screens (menu:<screen>): home and help
     bot.js                    ← the bot's @username (getMe, kept)
     query.js                  ← pagination, search, ORDER BY, WHERE helpers for list endpoints
-    html.js                   ← esc(), link(), fa() for parse_mode HTML texts
+    html.js                   ← esc(), link(), fa(), clock() for parse_mode HTML texts
     time.js                   ← now(), DAY, local time with a fixed UTC offset
     files.js                  ← CSV / XLSX / UTF-8 without npm packages
 src/                          ← the Mini App (React + Vite), if there is one; talks to endpoints only
@@ -120,7 +124,8 @@ plus a workflow. A job therefore also works by hand: send the command, or
   6. the answer to a pending question (`feedback`; `meta:…` from ✏️ 🎤 🖼 →
      `applyMetaEdit`, which lets a SoundCloud link through to step 7);
   7. a SoundCloud link in a private chat (`replyDownload`, lib/download.js);
-  8. other text in a private chat gets a one-line hint about links;
+  8. other text in a private chat is a search (`replySearch`, lib/search.js);
+     shorter than 2 characters, or a caption without text, gets a one-line hint;
   9. everything else (unknown commands, groups) is ignored, with no reply.
 - **callback_data** is `<feature>:<action>[:<args>]`, at most 64 bytes, for
   example `menu:help` or `wk:pub:-1001234`. Each lib module exports

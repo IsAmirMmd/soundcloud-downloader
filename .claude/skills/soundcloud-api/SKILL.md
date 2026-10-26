@@ -83,8 +83,14 @@ TOO_LONG. Nothing is fetched for a refused track — keep it that way.
   complete; the rest have just `id`. Fill them with
   `apiGet('/tracks', { ids: '1,2,3' })` (≤ 50 ids per call). Cap how many a
   user may pull per request.
-- **Search**: `apiGet('/search/tracks', { q, limit: 10, offset })` →
-  `{ collection: [track…], next_href }`.
+- **Search** (`searchTracks(q, { offset, limit })`, used by `lib/search.js`
+  and `lib/inline.js`): `GET /search/tracks?q&offset&limit` →
+  `{ collection: [track…], next_href }`. The next page's offset is read from
+  `next_href` (no `URL` in the runtime). Results the bot can't deliver
+  (BLOCK, SNIP, over `MAX_DURATION_SECONDS`, no usable transcoding) are
+  dropped, so a page may hold fewer than `limit`. A result pressed is fetched
+  again with `getTrackById` (`GET /tracks/<id>`): its `track_authorization`
+  is fresh, the search's may not be.
 - **Rate limits**: SoundCloud throttles by IP and client_id; the bot shares
   Telegram's IPs with other bots. Prefer the `tracks` file_id cache over new
   requests, and count per-user requests from `downloads`.

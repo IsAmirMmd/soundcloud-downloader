@@ -2,6 +2,7 @@
 
 The bot's one feature, end to end. Code: `tgcloud/lib/soundcloud.js` (the
 SoundCloud side), `tgcloud/lib/download.js` (the Telegram side),
+`tgcloud/lib/search.js` and `tgcloud/lib/inline.js` (finding a track by name),
 `tgcloud/lib/probe.js` (checking it from the cloud). Project conventions are in
 [ARCHITECTURE.md](ARCHITECTURE.md); keep this file true when the flow changes.
 
@@ -39,6 +40,44 @@ private chat: "https://on.soundcloud.com/AbC"
   (on failure: edited into the reason, ERRORS in lib/download.js)
 ```
 
+A press on a search result (`dl:<id>`, below) takes the same path from
+`getTrack` on, with `getTrackById` (`GET /tracks/<id>`) instead of
+`/resolve`: `sendTrack(target, load, { userId, url, via })` is the one path
+for both. `downloads.via` says how a track was asked for: `link`, `search`
+or `inline`.
+
+### Search: by name, in the bot and inline
+
+```
+private chat: "shab tehran" (no link, no command, ≥ 2 characters)
+  │ handlers/message.js → replySearch(message, text)             lib/search.js
+  ├─ searches ← { user_id, query }   (◀️ ▶️ need the text; callback_data ≤ 64 bytes)
+  ├─ searchTracks(q, { offset: 0, limit: 8 })                    lib/soundcloud.js
+  │    GET api-v2 /search/tracks?q&offset&limit → collection, next_href
+  │    without BLOCK / SNIP / too long / no usable stream
+  └─ sendMessage: one button per track "🎵 Title — Artist · ۳:۳۴" (dl:<id>),
+     ◀️ ▶️ (sr:<search id>:<offset>) edit the same message
+
+dl:<id> pressed → sendTrack(…, () => getTrackById(id), { via: 'search' })
+
+any chat: "@bot shab tehran"   (BotFather /setinline)
+  │ handlers/inline_query.js → answerInline(query)               lib/inline.js
+  ├─ searchTracks(q, { offset, limit: 15 }), next_offset for scrolling
+  ├─ on Telegram already (tracks.file_id, current FILE_VERSION)
+  │    → InlineQueryResultCachedAudio: the audio itself
+  └─ the rest → an article "🎵 Title / 🎤 Artist" with a ⏳ button (il:<id>)
+       sent → handlers/chosen_inline_result.js (BotFather /setinlinefeedback)
+              or ⏳ pressed → complete(inline_message_id, id)
+         ├─ storedFile(track): the kept file_id, or download → storage channel
+         │    (an inline message takes no upload: a file_id or URL only)
+         └─ editMessageMedia(inline_message_id, audio by file_id)
+            stale file_id → forgetFile, upload again once; failure → the
+            message says why (no channel: "send the link to the bot")
+```
+
+Inline audio has no ✏️ 🎤 🖼 buttons: the message is in someone else's chat
+and its edits would need a `sent_audios` row there.
+
 ## 2. api-v2 and the client_id
 
 SoundCloud closed its official API to new apps, so the bot talks to
@@ -65,6 +104,8 @@ its page to browsers.
 |---|---|
 | `GET https://soundcloud.com/` | HTML with the client_id |
 | `GET /resolve?url=<soundcloud.com link>` | the track / playlist / user (`kind`) |
+| `GET /tracks/<id>` | the track (a search result pressed) |
+| `GET /search/tracks?q=…&offset=…&limit=…` | `{ collection: [track…], next_href }`; the next page's `offset` is read from `next_href` |
 | `GET <transcoding.url>?track_authorization=…[&secret_token=s-…]` | `{ url }`: the signed media or playlist URL (expires within minutes); `secret_token` for a private track |
 | `GET <m3u8>` / segments (or one media URL) | the audio: AAC on `playback.media-streaming.soundcloud.cloud`, MP3 HLS on `cf-hls-media.sndcdn.com` (the code assumes no host) |
 | `GET <artwork_url with -t300x300>` | the cover, on `i1.sndcdn.com` |
@@ -198,10 +239,10 @@ Roughly in order; each is a `lib/` module + tests + a line in this file.
    message — or as buttons to pick from. Needs a cap per request.
 3. **Per-user limits**: N downloads per hour from `downloads`, to stay under
    SoundCloud's rate limits.
-4. **Inline mode** (`@bot <search>`): `GET /search/tracks?q=…`, results from
-   `tracks` (already on Telegram) as cached audio. New ones can be uploaded to
-   the storage channel (`lib/storage.js`, there since 2026-10-21) for a
-   file_id; needs `handlers/inline_query.js`, `chosen_inline_result.js`.
+4. ~~**Search and inline mode**~~ — done 2026-10-26 (§1, *Search*). Still to
+   see in the cloud: how often `/search/tracks` answers with tracks the bot
+   can't deliver, and whether SoundCloud rate-limits search from the cloud's
+   IPs (a cached inline answer, `CACHE_SECONDS`, keeps it down).
 5. **Groups**: answer a link when the bot is mentioned or replied to.
 6. **Quality / format choice** (buttons under the status message) once the
    formats seen in the cloud are known.
