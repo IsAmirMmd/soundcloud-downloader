@@ -191,8 +191,22 @@ export function soundcloud({ tracks = {}, short = {}, clientId = CLIENT_ID, page
       if (base === 'https://api-v2.soundcloud.com/resolve') {
         return tracks[params.url] ? reply(200, tracks[params.url]) : reply(404, '{}');
       }
+      // Search: every track (in the order given) is a result, paged by offset/limit.
       if (base === 'https://api-v2.soundcloud.com/search/tracks') {
-        return reply(200, { collection: Object.values(tracks).filter((t) => t.kind === 'track'), next_href: null });
+        const all = Object.values(tracks).filter((t) => t.kind === 'track');
+        const offset = Number(params.offset ?? 0);
+        const limit = Number(params.limit ?? 10);
+        const more = offset + limit < all.length;
+        return reply(200, {
+          collection: all.slice(offset, offset + limit),
+          next_href: more ? `https://api-v2.soundcloud.com/search/tracks?offset=${offset + limit}` : null,
+          total_results: all.length,
+        });
+      }
+      const byId = /\/tracks\/(\d+)$/.exec(base);
+      if (byId) {
+        const track = Object.values(tracks).find((t) => t.id === Number(byId[1]));
+        return track ? reply(200, track) : reply(404, '{}');
       }
       const original = /\/tracks\/(\d+)\/download$/.exec(base);
       if (original) {

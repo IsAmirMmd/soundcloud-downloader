@@ -8,6 +8,7 @@ import { toCsv, utf8Encode } from './files.js';
 import { fa } from './html.js';
 import { setSetting } from './settings.js';
 import { downloadStats } from './download.js';
+import { searchStats } from './search.js';
 import { stamp } from './time.js';
 
 const tell = (text, extra = {}) => api.sendMessage({ chat_id: ADMIN_ID, text, ...extra });
@@ -25,15 +26,18 @@ export async function userStats() {
   return Object.fromEntries(Object.entries(s ?? {}).map(([k, v]) => [k, Number(v ?? 0)]));
 }
 
-// /stats — the bot's users, then what they downloaded and why links failed.
+// /stats — the bot's users, then what they downloaded (and how they asked) and why it failed.
 export async function sendStats() {
   const s = await userStats();
   const d = await downloadStats();
+  const q = await searchStats();
   const errors = d.errors.map((e) => `${e.error}: ${fa(e.n)}`).join(' · ') || '—';
   await tell(
     `👥 Users: ${fa(s.users)}\n▶️ Started: ${fa(s.started)}\n⛔️ Blocked: ${fa(s.blocked)}\n` +
     `🆕 Last 24h: ${fa(s.new_1d)} · last 7 days: ${fa(s.new_7d)}\n\n` +
-    `🔗 Links: ${fa(d.links)} from ${fa(d.users)} users · last 24h: ${fa(d.links_1d)} from ${fa(d.users_1d)}\n` +
+    `🔗 Asked: ${fa(d.links)} from ${fa(d.users)} users · last 24h: ${fa(d.links_1d)} from ${fa(d.users_1d)}\n` +
+    `   by search: ${fa(d.from_search)} · inline: ${fa(d.from_inline)} · the rest by link\n` +
+    `🔎 Searches: ${fa(q.searches)} from ${fa(q.users)} users · last 24h: ${fa(q.searches_1d)}\n` +
     `⬇️ Downloaded: ${fa(d.sent)} · ♻️ from cache: ${fa(d.cached)} · ❌ failed: ${fa(d.failed)}\n` +
     `🎵 Tracks on Telegram: ${fa(d.tracks)} · in the storage channel: ${fa(d.stored)}\n` +
     `✏️ Edited copies: ${fa(d.edits)} by ${fa(d.edit_users)} users\n` +
@@ -42,7 +46,7 @@ export async function sendStats() {
 
 // Tables in /backup. `settings` is left out on purpose: it holds secrets that
 // should not sit in a chat as a file.
-const BACKUP_TABLES = ['users', 'tracks', 'downloads', 'sent_audios'];
+const BACKUP_TABLES = ['users', 'tracks', 'downloads', 'sent_audios', 'searches'];
 
 // /backup — every table as a CSV file (run on a schedule by
 // .github/workflows/scheduled.yml).

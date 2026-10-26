@@ -5,7 +5,7 @@
 // Order matters: payments → /start (with deep-link payloads) → /stop → admin
 // commands → public commands → the answer to a pending question (feedback,
 // or a new title / artist / cover for an audio) → a SoundCloud link to
-// download → a hint (private chats) → ignore.
+// download → any other text, searched (private chats) → a hint → ignore.
 
 import { api } from 'sdk';
 import { ADMIN_ID } from '../lib/config.js';
@@ -15,6 +15,7 @@ import { sendStats, sendBackup, setCommands, syncCommands, setClientId } from '.
 import { sendProbe } from '../lib/probe.js';
 import { replyDownload } from '../lib/download.js';
 import { applyMetaEdit } from '../lib/metadata.js';
+import { replySearch } from '../lib/search.js';
 
 // The admin command in `text`, started; or null when it is not one.
 // Scheduled jobs call these too (.github/workflows/scheduled.yml).
@@ -83,9 +84,13 @@ export default async function (message, ctx) {
   // Groups are left alone for now (docs/SOUNDCLOUD.md, roadmap).
   if (isPrivate && (await replyDownload(message, text))) return;
 
+  // Other text sent to the bot: the name of a song, searched (lib/search.js).
+  // Not a photo's caption.
+  if (isPrivate && message.text && !text.startsWith('/') && (await replySearch(message, text))) return;
+
   // Anything else in the private chat: say what the bot takes. Unknown
   // commands and everything in groups get no reply.
   if (isPrivate && text && !text.startsWith('/')) {
-    return api.sendMessage({ chat_id: message.chat.id, text: '🔗 لینک یه ترک ساندکلاد رو بفرست تا فایلش رو برات بفرستم.\nراهنما: /help' });
+    return api.sendMessage({ chat_id: message.chat.id, text: '🔗 لینک یه ترک ساندکلاد یا اسم آهنگ رو بفرست تا برات پیداش کنم.\nراهنما: /help' });
   }
 }

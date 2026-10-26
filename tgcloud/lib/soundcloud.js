@@ -5,6 +5,8 @@
 //
 //   findSoundcloudUrl(text)   the first SoundCloud link in a message, normalized
 //   getTrack(url)             resolve a link to a track (SoundcloudError otherwise)
+//   getTrackById(id)          the same for a track found by searchTracks
+//   searchTracks(q)           tracks for a text, without the ones the bot can't deliver
 //   downloadAudio(track)      the track's audio bytes, from the best stream it has
 //   artwork(track)            a 300×300 JPEG for the audio's thumbnail, or null
 //   downloadOriginal(track)   the file the artist uploaded (often lossless), when they allow it
@@ -207,6 +209,27 @@ export async function getTrack(link) {
   const track = trackOf(found);
   track.secretToken ??= /^https:\/\/soundcloud\.com\/[^/]+\/[^/]+\/(s-[A-Za-z0-9_-]+)$/.exec(full)?.[1] ?? null;
   return track;
+}
+
+// A track by its SoundCloud id (a search result's), as getTrack gives it.
+export async function getTrackById(id) {
+  const found = await apiGet(`/tracks/${Number(id)}`);
+  if (found?.kind !== 'track') throw new SoundcloudError('NOT_TRACK', found?.kind ?? 'nothing');
+  return trackOf(found);
+}
+
+// Tracks for `q`, `limit` of them from `offset` in SoundCloud's own order,
+// without those the bot could only refuse: blocked, Go+ previews, too long,
+// nothing but DRM streams. → { tracks, next } — `next` is the offset of the
+// next page, null on the last one. So a page can hold fewer than `limit`.
+export async function searchTracks(q, { offset = 0, limit = 10 } = {}) {
+  const found = await apiGet('/search/tracks', { q, offset, limit });
+  const tracks = (found?.collection ?? [])
+    .filter((t) => t?.kind === 'track')
+    .map(trackOf)
+    .filter((t) => t.policy !== 'BLOCK' && t.policy !== 'SNIP' && t.duration <= MAX_DURATION_SECONDS
+      && (!t.transcodings.length || pickTranscoding(t.transcodings)));
+  return { tracks, next: found?.next_href ? offset + limit : null };
 }
 
 // ---------- streams ----------
@@ -413,10 +436,15 @@ export async function downloadOriginal(track, { limit = MAX_AUDIO_BYTES } = {}) 
   return { bytes, ...originalFormat(bytes) };
 }
 
-// A SoundCloud artwork URL at another size (`t300x300`, `t500x500`, …) as a
-// JPEG, or null when there is none or it is over `limit`. Never throws.
+// A SoundCloud artwork URL at another size (`t300x300`, `t500x500`, …), or
+// null when there is none.
+export const artworkAt = (artworkUrl, size) =>
+  artworkUrl?.replace(/-(large|t\d+x\d+|crop|original)\.(jpg|png)$/, `-${size}.jpg`) ?? null;
+
+// That artwork as JPEG bytes, or null when there is none or it is over
+// `limit`. Never throws.
 export async function coverBytes(artworkUrl, size, limit) {
-  const url = artworkUrl?.replace(/-(large|t\d+x\d+|crop|original)\.(jpg|png)$/, `-${size}.jpg`);
+  const url = artworkAt(artworkUrl, size);
   if (!url) return null;
   try {
     return await download([url], limit);

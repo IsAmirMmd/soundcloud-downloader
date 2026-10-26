@@ -3,17 +3,23 @@
 //   menu:<screen>   the /start menu (lib/menu.js)
 //   feedback        ask for a message; handlers/message.js takes the answer
 //   meta:<field>    ✏️ 🎤 🖼 under an audio, ❌ under its question (lib/metadata.js)
+//   dl:, sr:        a search result, ◀️ ▶️ under the results (lib/search.js)
+//   il:<track id>   "⏳" under an inline result: bring the audio (lib/inline.js)
 // callback_data is at most 64 bytes, and it comes from the client: check who
 // pressed (query.from.id) before acting, and always answer the query.
 
 import { api } from 'sdk';
 import { handleMenuCallback } from '../lib/menu.js';
 import { handleMetaCallback } from '../lib/metadata.js';
+import { handleSearchCallback } from '../lib/search.js';
+import { handleInlineCallback } from '../lib/inline.js';
 import { askFor } from '../lib/users.js';
 
 export default async function (query, ctx) {
   if (await handleMenuCallback(query)) return;
   if (await handleMetaCallback(query)) return;
+  if (await handleSearchCallback(query)) return;
+  if (await handleInlineCallback(query)) return;
 
   if (query.data === 'feedback') {
     await askFor(query.from, 'feedback');

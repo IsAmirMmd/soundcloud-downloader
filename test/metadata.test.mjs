@@ -162,16 +162,21 @@ test('a wrong answer asks again: text for 🖼, a photo or a command for ✏️'
 test('❌ cancels: the question says so, and the next message is no answer', async () => {
   const audioId = await download();
   await callbackQuery(press(USER, 'meta:title', audioId), {});
-  const questionId = 500 + 2;   // after the ⏳ status and the audio
+  // The question's message id, from the pending action meta:title:<row>:<question>.
+  const questionId = Number(row('SELECT pending_action FROM users WHERE user_id = ?', USER).pending_action.split(':')[3]);
   take();
   await callbackQuery(press(USER, 'meta:cancel', questionId), {});
   const [answer, edited] = take();
   assert.equal(answer.params.text, 'لغو شد');
+  assert.equal(edited.params.message_id, questionId);
   assert.equal(edited.params.text, '❌ ویرایش لغو شد.');
   assert.equal(row('SELECT pending_action FROM users WHERE user_id = ?', USER).pending_action, null);
 
+  // The next message is a message of its own again: here, a search.
   await message(msg(USER, 'hello'), {});
-  assert.match(take()[0].params.text, /لینک یه ترک ساندکلاد/);
+  const reply = take().find((c) => c.method === 'sendMessage');
+  assert.match(reply.params.text, /hello/);
+  assert.ok(!/اسم جدید|نسخه/.test(reply.params.text));
   assert.equal(rows('SELECT * FROM sent_audios WHERE edited = 1').length, 0);
 });
 

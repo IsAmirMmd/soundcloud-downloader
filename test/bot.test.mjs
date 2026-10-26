@@ -21,6 +21,10 @@ test('/start records the user, keeps the first deep-link payload, and sends the 
   assert.equal(sent.method, 'sendMessage');
   assert.equal(sent.params.chat_id, USER);
   assert.ok(sent.params.reply_markup.inline_keyboard.flat().some((b) => b.callback_data === 'menu:help'));
+  // Search by name, and inline mode in other chats (lib/search.js, lib/inline.js).
+  assert.match(sent.params.text, /اسم آهنگ/);
+  assert.match(sent.params.text, /@test_bot اسم آهنگ/);
+  assert.ok(sent.params.reply_markup.inline_keyboard.flat().some((b) => b.switch_inline_query === ''));
 
   await message(msg(USER, '/start other'), {});
   const u = row('SELECT * FROM users WHERE user_id = ?', USER);
@@ -35,6 +39,8 @@ test('menu buttons edit the message into the next screen', async () => {
   assert.equal(edit.method, 'editMessageText');
   assert.equal(edit.params.message_id, 7);
   assert.match(edit.params.text, /راهنما/);
+  assert.match(edit.params.text, /<b>با اسم<\/b>/);
+  assert.match(edit.params.text, /<code>@test_bot اسم آهنگ<\/code>/);
   assert.match(edit.params.text, /توسعه‌دهنده: <a href="https:\/\/t\.me\/isAmirMmd">@isAmirMmd<\/a>/);
 });
 

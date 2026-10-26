@@ -200,9 +200,9 @@ test('SoundCloud down: the user is told to try later, the failure is logged', as
   assert.equal(row('SELECT status, error FROM downloads').error, 'UNREACHABLE');
 });
 
-test('other text in private gets a hint; groups and unknown commands get nothing', async () => {
-  await message(msg(USER, 'hello'), {});
-  assert.match(take()[0].params.text, /لینک یه ترک ساندکلاد/);
+test('text too short to search gets a hint; groups and unknown commands get nothing', async () => {
+  await message(msg(USER, 'x'), {});
+  assert.match(take()[0].params.text, /لینک یه ترک ساندکلاد یا اسم آهنگ/);
 
   await message(groupMsg(USER, LINK), {});
   await message(msg(USER, '/unknown'), {});
@@ -220,7 +220,8 @@ test('/stats counts links, downloads, cache hits and failures by reason', async 
 
   await message(msg(ADMIN_ID, '/stats'), {});
   const [stats] = take();
-  assert.match(stats.params.text, /Links: ۳ from ۲ users/);
+  assert.match(stats.params.text, /Asked: ۳ from ۲ users/);
+  assert.match(stats.params.text, /by search: ۰ · inline: ۰/);
   assert.match(stats.params.text, /Downloaded: ۱ · ♻️ from cache: ۱ · ❌ failed: ۱/);
   assert.match(stats.params.text, /NOT_FOUND: ۱/);
   assert.match(stats.params.text, /Edited copies: ۰ by ۰ users/);

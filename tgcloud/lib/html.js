@@ -12,6 +12,13 @@ export const faPercent = (ratio) => `${Number((ratio * 100).toFixed(1)).toLocale
 
 export const userLabel = (u) => (u?.username ? `@${u.username}` : u?.first_name || String(u?.user_id ?? u?.id ?? ''));
 
+// 214 seconds → "۳:۳۴": a track's length, in Persian digits.
+export function clock(seconds) {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  const text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  return text.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d]);
+}
+
 // Short enough for a list line.
 export function clip(s, n = 60) {
   const t = String(s ?? '').trim();

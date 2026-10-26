@@ -35,7 +35,9 @@ export function withTags(bytes, ext, { title, artist, cover }) {
   return tagAudio(bytes, ext, { title, artist, cover: fits ? cover : null }) ?? bytes;
 }
 
-async function caption(permalink) {
+// An audio's caption (HTML): its SoundCloud page and the bot. Inline
+// results use it too (lib/inline.js).
+export async function captionFor(permalink) {
   const link = permalink ? `<a href="${esc(permalink)}">SoundCloud</a> · ` : '';
   return `${link}@${esc(await botUsername())}`;
 }
@@ -52,7 +54,7 @@ export async function sendAudioMessage(chatId, audio, info, { thumbnail = null, 
     performer: info.artist || undefined,
     duration: info.duration || undefined,
     ...(thumbnail ? { thumbnail: new InputFile(thumbnail, 'cover.jpg', { type: 'image/jpeg' }) } : {}),
-    caption: await caption(info.permalink),
+    caption: await captionFor(info.permalink),
     parse_mode: 'HTML',
     ...(replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}),
     reply_markup: META_BUTTONS,

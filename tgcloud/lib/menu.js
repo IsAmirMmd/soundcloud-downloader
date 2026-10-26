@@ -12,23 +12,33 @@ const back = { text: '🔙 برگشت', callback_data: 'menu:home' };
 const SCREENS = {
   home: (user, bot) => ({
     text: `سلام${user?.first_name ? ` ${esc(user.first_name)}` : ''} 👋\n\n` +
-      'لینک هر ترکی از <b>ساندکلاد</b> رو برام بفرست تا فایل صوتی‌ش رو همین‌جا برات بفرستم 🎧\n\n' +
-      'مثلا: <code>https://soundcloud.com/forss/flickermood</code>\n' +
-      `لینک اشتراک‌گذاری اپ ساندکلاد (<code>on.soundcloud.com/…</code>) هم قبوله. — @${esc(bot)}`,
+      'لینک یه ترک از <b>ساندکلاد</b> یا اسم آهنگ رو برام بفرست تا فایل صوتی‌ش رو همین‌جا برات بفرستم 🎧\n\n' +
+      '🔗 لینک: <code>https://soundcloud.com/forss/flickermood</code>\n' +
+      '🔎 اسم: <code>flickermood</code>\n\n' +
+      `توی هر چت دیگه‌ای هم بنویس <code>@${esc(bot)} اسم آهنگ</code> و از لیست انتخابش کن.`,
     parse_mode: 'HTML',
     link_preview_options: { is_disabled: true },
     reply_markup: { inline_keyboard: [
       ...(MINI_APP_URL ? [[{ text: '📱 باز کردن اپ', web_app: { url: MINI_APP_URL } }]] : []),
+      // Opens the chat picker with "@bot " typed in (inline mode, lib/inline.js).
+      [{ text: '🔎 جستجو و فرستادن توی چت‌های دیگه', switch_inline_query: '' }],
       [{ text: '📖 راهنما', callback_data: 'menu:help' }, { text: '💬 ارسال نظر', callback_data: 'feedback' }],
     ] },
   }),
-  help: () => ({
+  help: (user, bot) => ({
     text: [
       '📖 <b>راهنما</b>',
       '',
+      '<b>با لینک</b>',
       '۱. توی اپ یا سایت ساندکلاد، روی ترک دکمه‌ی <b>Share</b> رو بزن و <b>Copy link</b> رو انتخاب کن.',
       '۲. لینک رو همین‌جا برام بفرست.',
       '۳. چند ثانیه بعد فایل صوتی با اسم و کاور ترک می‌رسه.',
+      '',
+      '<b>با اسم</b>',
+      '🔎 اسم آهنگ یا خواننده رو بفرست؛ از نتیجه‌ها روی آهنگی که می‌خوای بزن تا دانلود بشه. با ◀️ ▶️ نتیجه‌های بیشتری می‌بینی.',
+      '',
+      '<b>توی چت‌های دیگه</b>',
+      `توی هر چت یا گروهی بنویس <code>@${esc(bot)} اسم آهنگ</code> و آهنگ رو از لیست انتخاب کن؛ همون‌جا فرستاده می‌شه. آهنگی که تازه‌ست چند ثانیه طول می‌کشه تا جاش بیاد.`,
       '',
       '<b>چه لینک‌هایی؟</b>',
       '✅ لینک یه ترک: <code>soundcloud.com/artist/track</code>',
