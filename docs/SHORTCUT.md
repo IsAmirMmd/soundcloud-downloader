@@ -1,63 +1,67 @@
-# جستجو از شورتکات آیفون
+# Searching from an iPhone Shortcut
 
-<div dir="rtl">
+## Why not the bot's endpoints
 
-## چرا اندپوینت ربات نه
+The bot's endpoints (`tgcloud/endpoints/*`, i.e. `POST https://app<id>.tgcloud.ai/api/<name>`)
+are run by Telegram's platform only when the request carries **init data
+signed by Telegram**. That signature is made only inside the bot's Mini App,
+opened in Telegram. A Shortcut doesn't have it, so every request it makes is
+answered `401` before the bot's code runs. tgcloud has no other public API.
+The only other way in is the CLI's management API, which takes the token that
+can deploy code and change the database; that token must not go on a phone.
 
-اندپوینت‌های ربات (`tgcloud/endpoints/*`، یعنی `POST https://app<id>.tgcloud.ai/api/<name>`) را پلتفرم تلگرام فقط وقتی اجرا می‌کند که درخواست **init data امضاشده‌ی تلگرام** داشته باشد. این امضا فقط داخل Mini App ربات و از داخل تلگرام ساخته می‌شود. شورتکات آن را ندارد، پس هر درخواستش قبل از رسیدن به کد ربات جواب `401` می‌گیرد. API عمومی دیگری هم روی tgcloud نیست. تنها راه دیگر، API مدیریت CLI است که با توکنی کار می‌کند که می‌تواند کد را دیپلوی و دیتابیس را عوض کند؛ آن توکن نباید روی گوشی برود.
-
-پس شورتکات **خودش** از API ساندکلاد جستجو می‌کند (همان کاری که `lib/soundcloud.js` می‌کند) و آهنگ انتخاب‌شده را با یک لینک به ربات می‌دهد:
+So the Shortcut searches SoundCloud's API **itself** (what
+`lib/soundcloud.js` does) and hands the chosen track to the bot with a link:
 
 ```
-شورتکات ── GET soundcloud.com ─────────────▶ client_id (از HTML صفحه)
-        ── GET api-v2 /search/tracks ──────▶ JSON نتیجه‌ها
-        ── Choose from List
-        ── Open URL tg://resolve?domain=<bot>&start=t_<id>
-ربات    ◀─ /start t_<id> ──▶ همان مسیر دکمه‌ی نتیجه‌ی جستجو: ⏳ ← کانال کش ← فایل صوتی با ✏️ 🎤 🖼
+Shortcut ── GET soundcloud.com ────────────▶ client_id (from the page's HTML)
+         ── GET api-v2 /search/tracks ─────▶ the results, JSON
+         ── Choose from List
+         ── Open URL tg://resolve?domain=<bot>&start=t_<id>
+Bot      ◀─ /start t_<id> ──▶ the same path as a pressed search result: ⏳ → storage channel → audio with ✏️ 🎤 🖼
 ```
 
-هیچ توکن یا رمزی روی گوشی نیست. `client_id` عمومی است و هر بازدیدکننده‌ی soundcloud.com آن را می‌گیرد.
+No token or secret is on the phone. The `client_id` is public: every visitor
+of soundcloud.com gets it.
 
-## ۱. گرفتن client_id
-
-</div>
+## 1. Get the client_id
 
 ```
 GET https://soundcloud.com/
 User-Agent: Shortcuts/3 CFNetwork/1568.100.1 Darwin/24.0.0
 ```
 
-<div dir="rtl">
-
-بدنه ندارد. در HTML جواب این regex را پیدا کنید؛ گروه ۱ همان `client_id` است (۳۲ حرف و عدد):
-
-</div>
+No body. Find this regex in the HTML; group 1 is the `client_id`
+(32 letters and digits):
 
 ```
 "apiClient","data":\{"id":"([a-zA-Z0-9]{32})"
 ```
 
-<div dir="rtl">
+> **Always send this User-Agent header.** From Telegram's servers
+> (2026-10-27), this User-Agent got a 74 KB page with the `client_id`; the
+> iPhone Safari User-Agent got a 56 KB mobile page without it. The
+> `client_id` changes every few weeks; the Shortcut fetches a fresh one on
+> every run.
 
-> **هدر User-Agent را حتماً بگذارید.** از سرور تلگرام (۲۰۲۶-۱۰-۲۷) با همین User-Agent صفحه‌ی ۷۴ کیلوبایتی با `client_id` آمد، ولی با User-Agent سافاری آیفون یک صفحه‌ی موبایل ۵۶ کیلوبایتی بدون آن. `client_id` هر چند هفته عوض می‌شود؛ هر بار اجرای شورتکات آن را تازه می‌گیرد.
-
-## ۲. جستجو
-
-</div>
+## 2. Search
 
 ```
 GET https://api-v2.soundcloud.com/search/tracks?q=cry%20for%20me&limit=10&client_id=<client_id>
 ```
 
-<div dir="rtl">
+No body. `q` must be URL-encoded (the **URL Encode** action). `limit` is the
+number of results (SoundCloud sometimes returns one more), `offset` the start
+of a later page.
 
-بدنه ندارد. `q` باید URL-encode شود (اکشن **URL Encode**). `limit` تعداد نتیجه است (ساندکلاد گاهی یکی بیشتر می‌دهد) و `offset` برای صفحه‌های بعد.
+### Sample response
 
-### نمونه‌ی جواب
-
-جواب واقعی همین درخواست از سرور تلگرام، ۲۰۲۶-۱۰-۲۷، با `limit=2`، کوتاه‌شده: هر ترک حدود ۷۰ فیلد دارد و این‌جا فقط فیلدهای به‌دردبخور مانده‌اند؛ ساندکلاد یک ترک سوم هم داده بود که حذف شده؛ ترک دوم شش `transcodings` داشت که همه رمزگذاری‌شده بودند و دو تایش مانده است. `track_authorization` و `media.transcodings[].url` هم حذف شده‌اند (برای شورتکات لازم نیستند).
-
-</div>
+The real response to this request from Telegram's servers, 2026-10-27, with
+`limit=2`, shortened: each track has about 70 fields and only the useful ones
+are kept here; SoundCloud also returned a third track, removed; the second
+track had six `transcodings`, all encrypted, of which two are kept.
+`track_authorization` and `media.transcodings[].url` are removed too (the
+Shortcut doesn't need them).
 
 ```json
 {
@@ -113,64 +117,72 @@ GET https://api-v2.soundcloud.com/search/tracks?q=cry%20for%20me&limit=10&client
 }
 ```
 
-<div dir="rtl">
-
-| فیلد | یعنی |
+| Field | Meaning |
 |---|---|
-| `collection[].id` | شناسه‌ی ترک؛ همان چیزی که به ربات داده می‌شود (`t_<id>`) |
-| `title` | اسم ترک |
-| `publisher_metadata.artist` | خواننده، وقتی ناشر گذاشته؛ وگرنه `user.username` |
-| `full_duration` | مدت به **میلی‌ثانیه** (۱۶۰۶۷۹ ≈ ۲:۴۰) |
-| `artwork_url` | کاور ۱۰۰×۱۰۰؛ با عوض کردن `-large` به `-t500x500` بزرگ‌تر می‌شود |
-| `permalink_url` | صفحه‌ی ترک در ساندکلاد |
-| `policy` | `BLOCK`: در دسترس نیست · `SNIP`: فقط پیش‌نمایش Go+ · بقیه پخش می‌شوند |
-| `media.transcodings[].format.protocol` | `hls` یا `progressive`: ربات می‌تواند دانلودش کند. فقط `cbc-encrypted-hls` / `ctr-encrypted-hls`: رمزگذاری‌شده (DRM)، مثل Cry For Me از The Weeknd؛ ربات با پیام 🔒 جواب می‌دهد |
-| `next_href` | صفحه‌ی بعد؛ برای صدا زدنش `&client_id=<client_id>` را به ته آن اضافه کنید. `null`: صفحه‌ی آخر |
+| `collection[].id` | The track's id; what is handed to the bot (`t_<id>`) |
+| `title` | The track's name |
+| `publisher_metadata.artist` | The artist, when the publisher set one; otherwise `user.username` |
+| `full_duration` | Length in **milliseconds** (160679 ≈ 2:40) |
+| `artwork_url` | The 100×100 cover; replace `-large` with `-t500x500` for a bigger one |
+| `permalink_url` | The track's page on SoundCloud |
+| `policy` | `BLOCK`: not available · `SNIP`: Go+ preview only · anything else plays |
+| `media.transcodings[].format.protocol` | `hls` or `progressive`: the bot can download it. Only `cbc-encrypted-hls` / `ctr-encrypted-hls`: encrypted (DRM), like The Weeknd's Cry For Me; the bot answers with its 🔒 message |
+| `next_href` | The next page; append `&client_id=<client_id>` to call it. `null`: the last page |
 
-خطاها: `401` یا `403` یعنی `client_id` منقضی شده (دوباره از قدم ۱ بگیرید). `429` یعنی ساندکلاد درخواست زیادی گرفته؛ کمی صبر کنید.
+Errors: `401` or `403` means the `client_id` expired (get a new one, step 1).
+`429` means SoundCloud has had too many requests; wait a little.
 
-## ۳. دادن آهنگ به ربات
-
-</div>
+## 3. Hand the track to the bot
 
 ```
 tg://resolve?domain=<BOT_USERNAME>&start=t_2022483977
 ```
 
-<div dir="rtl">
+(Or `https://t.me/<BOT_USERNAME>?start=t_2022483977`; `tg://` opens Telegram
+directly, without going through Safari.) `<BOT_USERNAME>` is the bot's
+username without the @. Telegram opens the bot's chat and sends
+`/start t_2022483977`; if it shows a **Start** button, tap it. The bot does
+what it does for a pressed search result: "⏳", then the audio with the
+✏️ 🎤 🖼 buttons. A track that can't be downloaded gets the reason. `/stats`
+counts these as "t_ deep link".
 
-(یا `https://t.me/<BOT_USERNAME>?start=t_2022483977`؛ `tg://` بدون رد شدن از سافاری مستقیم تلگرام را باز می‌کند.) `<BOT_USERNAME>` یوزرنیم ربات بدون @ است. تلگرام چت ربات را باز می‌کند و `/start t_2022483977` را می‌فرستد. اگر دکمه‌ی **Start / شروع** نشان داد، آن را بزنید. ربات همان کاری را می‌کند که با زدن روی یک نتیجه‌ی جستجو: «⏳»، بعد فایل صوتی با دکمه‌های ✏️ 🎤 🖼. ترکی که قابل دانلود نیست، دلیلش را می‌گیرد. در `/stats` این‌ها «t_ deep link» شمرده می‌شوند.
+## 4. Building the Shortcut
 
-## ۴. ساختن شورتکات
+Each action takes the previous one's output unless a variable is named.
 
-اسم اکشن‌ها به انگلیسی است (در شورتکات فارسی هم با جستجوی همین اسم‌ها پیدا می‌شوند). هر اکشن خروجی قبلی را می‌گیرد، مگر این‌که متغیر نوشته شده باشد.
-
-1. **Ask for Input**: نوع Text، سؤال «اسم آهنگ؟».
-2. **URL Encode** (Encode) ← ورودی پرسیده‌شده. **Set Variable** `query`.
-3. **Get Contents of URL**: `https://soundcloud.com/`، Method: GET، Headers: `User-Agent` = `Shortcuts/3 CFNetwork/1568.100.1 Darwin/24.0.0`.
-4. **Match Text**: الگوی `"apiClient","data":\{"id":"([a-zA-Z0-9]{32})"` در خروجی قدم ۳.
+1. **Ask for Input**: type Text, prompt "Song name?".
+2. **URL Encode** (Encode) ← the provided input. **Set Variable** `query`.
+3. **Get Contents of URL**: `https://soundcloud.com/`, Method: GET, Headers:
+   `User-Agent` = `Shortcuts/3 CFNetwork/1568.100.1 Darwin/24.0.0`.
+4. **Match Text**: pattern `"apiClient","data":\{"id":"([a-zA-Z0-9]{32})"` in step 3's output.
 5. **Get Group from Matched Text**: Group At Index `1`. **Set Variable** `clientId`.
-   (اختیاری: **If** `clientId` **does not have any value** ← **Show Alert** «client_id پیدا نشد» و **Stop This Shortcut**.)
-6. **Text**: `https://api-v2.soundcloud.com/search/tracks?q=` `query` `&limit=10&client_id=` `clientId` (بدون فاصله، پشت سر هم).
-7. **Get Contents of URL** ← همان متن (GET). جواب JSON خودش Dictionary می‌شود.
+   (Optional: **If** `clientId` **does not have any value** → **Show Alert**
+   "No client_id found" and **Stop This Shortcut**.)
+6. **Text**: `https://api-v2.soundcloud.com/search/tracks?q=` `query`
+   `&limit=10&client_id=` `clientId` (no spaces, one after another).
+7. **Get Contents of URL** ← that text (GET). The JSON response becomes a Dictionary by itself.
 8. **Get Dictionary Value**: Value for `collection`.
-9. **Repeat with Each** آیتم:
-   1. **Get Dictionary Value** `title` از Repeat Item ← **Set Variable** `title`.
-   2. **Get Dictionary Value** `user` از Repeat Item، بعد **Get Dictionary Value** `username` ← **Set Variable** `artist`.
-   3. **Get Dictionary Value** `id` از Repeat Item ← **Set Variable** `id`.
+9. **Repeat with Each** item:
+   1. **Get Dictionary Value** `title` from Repeat Item → **Set Variable** `title`.
+   2. **Get Dictionary Value** `user` from Repeat Item, then **Get Dictionary Value** `username` → **Set Variable** `artist`.
+   3. **Get Dictionary Value** `id` from Repeat Item → **Set Variable** `id`.
    4. **Text**: `title` ` — ` `artist` ` · #` `id`
    5. **Add to Variable** `results`.
 10. **Choose from List** ← `results`.
-11. **Match Text**: الگوی `#(\d+)$` در آیتم انتخاب‌شده، بعد **Get Group from Matched Text** Group At Index `1`.
-12. **Open URLs**: `tg://resolve?domain=<BOT_USERNAME>&start=t_` + خروجی قدم ۱۱.
+11. **Match Text**: pattern `#(\d+)$` in the chosen item, then **Get Group from Matched Text** Group At Index `1`.
+12. **Open URLs**: `tg://resolve?domain=<BOT_USERNAME>&start=t_` + step 11's output.
 
-`#<id>` ته هر گزینه می‌آید تا بعد از انتخاب شناسه دوباره پیدا شود. نتیجه‌ها در یک لیست جمع می‌شوند، پس به همان ترتیب ساندکلاد نشان داده می‌شوند.
+The `#<id>` at the end of each choice is there to find the id again after the
+pick. The results are collected in a list, so they show in SoundCloud's order.
 
-**اختیاری، مخفی کردن ترک‌های رمزگذاری‌شده:** داخل قدم ۹، قبل از Add to Variable: **Get Dictionary Value** `media` ← **Get Dictionary Value** `transcodings` ← **Repeat with Each** ← **Get Dictionary Value** `format` ← **Get Dictionary Value** `protocol` ← **If** is `hls` ← **Set Variable** `ok` = `1`. بعد از این Repeat داخلی: **If** `ok` is `1` ← Add to Variable، و بعد `ok` را خالی کنید. ربات بدون این هم ترک رمزگذاری‌شده را با پیام 🔒 رد می‌کند.
+**Optional, hiding encrypted tracks:** inside step 9, before Add to Variable:
+**Get Dictionary Value** `media` → **Get Dictionary Value** `transcodings` →
+**Repeat with Each** → **Get Dictionary Value** `format` → **Get Dictionary
+Value** `protocol` → **If** is `hls` → **Set Variable** `ok` = `1`. After this
+inner Repeat: **If** `ok` is `1` → Add to Variable, then clear `ok`. Without
+this, the bot still refuses an encrypted track with its 🔒 message.
 
-## ۵. تست از کامپیوتر
-
-</div>
+## 5. Testing from a computer
 
 ```
 UA='Shortcuts/3 CFNetwork/1568.100.1 Darwin/24.0.0'
@@ -179,13 +191,10 @@ curl -s -A "$UA" "https://api-v2.soundcloud.com/search/tracks?q=cry%20for%20me&l
   | jq '.collection[] | {id, title, artist: (.publisher_metadata.artist // .user.username), seconds: (.full_duration / 1000 | floor), protocols: [.media.transcodings[].format.protocol] | unique}'
 ```
 
-<div dir="rtl">
+## Checking it from Telegram's servers
 
-## بررسی از سرور تلگرام
-
-همین مسیر (صفحه با regex شورتکات و هر دو User-Agent، بعد جستجو و JSON خامش) از جایی که ربات اجرا می‌شود:
-
-</div>
+The same path (the page with the Shortcut's regex and both User-Agents, then
+the search and its raw JSON), from where the bot runs:
 
 ```
 Actions → Run in cloud → endpoints/adminProbe → { q: "cry for me", shortcut: true, limit: 2 }
