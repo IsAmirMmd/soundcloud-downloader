@@ -122,7 +122,7 @@ help - راهنمای دانلود از ساندکلاد
 
 ## ۸. تنظیمات دیگر
 
-- **Inline mode** (جستجو در هر چت با `@<bot> اسم آهنگ`، `tgcloud/lib/inline.js`): دو تنظیم، هر دو در **Bot Settings**:
+- **Inline mode** (جستجو در هر چت با `@SoundCoudMusicBot اسم آهنگ`، `tgcloud/lib/inline.js`): دو تنظیم، هر دو در **Bot Settings**:
   - `/setinline` ← روشن، با این متن راهنما (placeholder):
 
 </div>

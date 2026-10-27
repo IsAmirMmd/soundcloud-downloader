@@ -17,7 +17,7 @@ So the Shortcut searches SoundCloud's API **itself** (what
 Shortcut ── GET soundcloud.com ────────────▶ client_id (from the page's HTML)
          ── GET api-v2 /search/tracks ─────▶ the results, JSON
          ── Choose from List
-         ── Open URL tg://resolve?domain=<bot>&start=t_<id>
+         ── Open URL tg://resolve?domain=SoundCoudMusicBot&start=t_<id>
 Bot      ◀─ /start t_<id> ──▶ the same path as a pressed search result: ⏳ → storage channel → audio with ✏️ 🎤 🖼
 ```
 
@@ -135,12 +135,13 @@ Errors: `401` or `403` means the `client_id` expired (get a new one, step 1).
 ## 3. Hand the track to the bot
 
 ```
-tg://resolve?domain=<BOT_USERNAME>&start=t_2022483977
+tg://resolve?domain=SoundCoudMusicBot&start=t_2022483977
 ```
 
-(Or `https://t.me/<BOT_USERNAME>?start=t_2022483977`; `tg://` opens Telegram
-directly, without going through Safari.) `<BOT_USERNAME>` is the bot's
-username without the @. Telegram opens the bot's chat and sends
+(Or `https://t.me/SoundCoudMusicBot?start=t_2022483977`; `tg://` opens
+Telegram directly, without going through Safari.) `SoundCoudMusicBot` is the
+bot's username (@SoundCoudMusicBot) without the @. Telegram opens the bot's
+chat and sends
 `/start t_2022483977`; if it shows a **Start** button, tap it. The bot does
 what it does for a pressed search result: "⏳", then the audio with the
 ✏️ 🎤 🖼 buttons. A track that can't be downloaded gets the reason. `/stats`
@@ -170,7 +171,7 @@ Each action takes the previous one's output unless a variable is named.
    5. **Add to Variable** `results`.
 10. **Choose from List** ← `results`.
 11. **Match Text**: pattern `#(\d+)$` in the chosen item, then **Get Group from Matched Text** Group At Index `1`.
-12. **Open URLs**: `tg://resolve?domain=<BOT_USERNAME>&start=t_` + step 11's output.
+12. **Open URLs**: `tg://resolve?domain=SoundCoudMusicBot&start=t_` + step 11's output.
 
 The `#<id>` at the end of each choice is there to find the id again after the
 pick. The results are collected in a list, so they show in SoundCloud's order.
