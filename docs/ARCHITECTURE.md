@@ -55,7 +55,7 @@ tgcloud/                      ← deployed code; the only code the platform sees
     settings.js               ← key/value table: secrets, drafts, flags (and the SoundCloud client_id)
     users.js                  ← users table: /start tracking, blocked, /stop, pending_action
     access.js                 ← callerId / isAdmin / requireAdmin / forbidden() for endpoints
-    admin.js                  ← bodies of the admin commands (/stats, /backup, /setclientid, /setcommands)
+    admin.js                  ← bodies of the admin commands (/stats, /backup, /setclientid, /doc, /setcommands)
     menu.js                   ← the /start menu as screens (menu:<screen>): home and help
     bot.js                    ← the bot's @username (getMe, kept)
     query.js                  ← pagination, search, ORDER BY, WHERE helpers for list endpoints

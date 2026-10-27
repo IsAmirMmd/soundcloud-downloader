@@ -1,9 +1,9 @@
 // The admin's commands (handlers/message.js routes to them). Each returns a
 // promise; a failure is reported to the admin as "⚠️ Command failed".
 
-import { api, db, InputFile, BotApiError } from 'sdk';
+import { api, db, fetch, InputFile, BotApiError } from 'sdk';
 import { sql } from 'sdk/db';
-import { ADMIN_ID } from './config.js';
+import { ADMIN_ID, REPO } from './config.js';
 import { toCsv, utf8Encode } from './files.js';
 import { fa } from './html.js';
 import { setSetting } from './settings.js';
@@ -81,6 +81,25 @@ export async function setClientId(text) {
   await tell('client_id saved ✅ — check it with /sc');
 }
 
+// /doc <path> [ref] — a file of this repository (docs/SHORTCUT.md, README.md…)
+// as a document in the admin's chat. The docs aren't deployed, so it comes
+// from GitHub; `ref` is a branch (main) or a commit, whose file is never a
+// copy GitHub still has cached.
+export async function sendRepoFile(text) {
+  const [, path, ref = 'main'] = /^\/doc(?:@\w+)?\s+(\S+)(?:\s+(\S+))?\s*$/.exec(text) ?? [];
+  const safe = (s) => /^[\w.-]+(\/[\w.-]+)*$/.test(s ?? '') && !s.split('/').includes('..');
+  if (!safe(path) || !safe(ref)) return tell('Usage: /doc <path in the repo> [branch or commit], e.g. /doc docs/SHORTCUT.md');
+  const res = await fetch(`https://raw.githubusercontent.com/${REPO}/${ref}/${path}`);
+  if (!res.ok) return tell(`${path} @ ${ref}: GitHub answered ${res.status}`);
+  const name = path.split('/').pop();
+  const type = /\.md$/i.test(name) ? 'text/markdown' : 'text/plain';
+  await api.sendDocument({
+    chat_id: ADMIN_ID,
+    document: new InputFile(utf8Encode(await res.text()), name, { type }),
+    caption: `📄 ${path} · ${ref}`,
+  });
+}
+
 // The lists Telegram suggests after typing "/". Everyone sees the public
 // commands; the admin's own chat also lists the admin ones.
 const PUBLIC_COMMANDS = [
@@ -93,6 +112,7 @@ const ADMIN_COMMANDS = [
   { command: 'sc', description: 'بررسی دسترسی به ساندکلاد (لینک اختیاری)' },
   { command: 'setclientid', description: 'تنظیم دستی client_id ساندکلاد' },
   { command: 'backup', description: 'بکاپ جدول‌ها (CSV)' },
+  { command: 'doc', description: 'فایلی از ریپو، مثلاً docs/SHORTCUT.md' },
   { command: 'ping', description: 'ربات زنده است؟' },
   { command: 'setcommands', description: 'به‌روزرسانی همین لیست' },
 ];

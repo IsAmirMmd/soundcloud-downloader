@@ -11,7 +11,7 @@ import { api } from 'sdk';
 import { ADMIN_ID } from '../lib/config.js';
 import { trackStart, unsubscribe, takePending } from '../lib/users.js';
 import { sendHome, sendScreen } from '../lib/menu.js';
-import { sendStats, sendBackup, setCommands, syncCommands, setClientId } from '../lib/admin.js';
+import { sendStats, sendBackup, setCommands, syncCommands, setClientId, sendRepoFile } from '../lib/admin.js';
 import { sendProbe } from '../lib/probe.js';
 import { replyDownload } from '../lib/download.js';
 import { applyMetaEdit } from '../lib/metadata.js';
@@ -26,6 +26,7 @@ function adminCommand(message, text) {
   if (text === '/setcommands') return setCommands();
   if (/^\/sc(@\w+)?(\s|$)/.test(text)) return sendProbe(text);
   if (/^\/setclientid(@\w+)?(\s|$)/.test(text)) return setClientId(text);
+  if (/^\/doc(@\w+)?(\s|$)/.test(text)) return sendRepoFile(text);
   return null;
 }
 
