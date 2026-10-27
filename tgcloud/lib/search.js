@@ -4,6 +4,9 @@
 //   dl:<track id>             download it, like a link (lib/download.js sendTrack)
 //   sr:<search id>:<offset>   ◀️ ▶️ another page, in the same message
 // The text is kept in `searches`: callback_data holds only 64 bytes.
+// A track id also comes as a deep link, t.me/<bot>?start=t_<track id>
+// (handlers/message.js): what an iPhone Shortcut that searched SoundCloud
+// itself opens (docs/SHORTCUT.md).
 
 import { api, db } from 'sdk';
 import { sql } from 'sdk/db';
@@ -93,16 +96,20 @@ export async function replySearch(message, text) {
   return true;
 }
 
+// SoundCloud track `id` to target ({ chatId, replyTo }), like a link.
+// via: 'search' (a result pressed) | 'deeplink' (/start t_<id>).
+export function sendTrackById(target, userId, id, via) {
+  return sendTrack(target, () => getTrackById(id), { userId, url: `soundcloud:tracks:${id}`, via });
+}
+
 // A press on a result (dl:) or on ◀️ ▶️ (sr:). true when the button was one of these.
 export async function handleSearchCallback(query) {
   const download = /^dl:(\d+)$/.exec(query.data ?? '');
   if (download) {
     await api.answerCallbackQuery({ callback_query_id: query.id, text: '⏳ دانلودش شروع شد' }).catch(console.error);
-    const id = Number(download[1]);
-    await sendTrack(
+    await sendTrackById(
       { chatId: query.message?.chat?.id ?? query.from.id, replyTo: query.message?.message_id },
-      () => getTrackById(id),
-      { userId: query.from.id, url: `soundcloud:tracks:${id}`, via: 'search' });
+      query.from.id, Number(download[1]), 'search');
     return true;
   }
 

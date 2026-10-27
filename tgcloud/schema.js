@@ -88,7 +88,7 @@ export const downloads = table('downloads', {
   status:     text('status').notNull(),                 // 'sent' (downloaded) | 'cached' (file_id reused) | 'failed'
   error:      text('error'),                            // SoundcloudError code, or INTERNAL
   ms:         integer('ms'),                            // from the link to the audio (or the error)
-  via:        text('via'),                              // 'link' | 'search' (lib/search.js) | 'inline' (lib/inline.js); null: a link, from before
+  via:        text('via'),                              // 'link' | 'search' (lib/search.js) | 'inline' (lib/inline.js) | 'deeplink' (/start t_<id>); null: a link, from before
   created_at: integer('created_at').default(sql`(unixepoch())`),
 }, (t) => ({
   created: index('idx_downloads_created').on(t.created_at),

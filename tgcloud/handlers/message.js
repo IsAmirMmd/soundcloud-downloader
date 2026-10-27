@@ -15,7 +15,7 @@ import { sendStats, sendBackup, setCommands, syncCommands, setClientId } from '.
 import { sendProbe } from '../lib/probe.js';
 import { replyDownload } from '../lib/download.js';
 import { applyMetaEdit } from '../lib/metadata.js';
-import { replySearch } from '../lib/search.js';
+import { replySearch, sendTrackById } from '../lib/search.js';
 
 // The admin command in `text`, started; or null when it is not one.
 // Scheduled jobs call these too (.github/workflows/scheduled.yml).
@@ -34,6 +34,12 @@ function adminCommand(message, text) {
 // The first payload a user came with is kept in users.start_param (attribution).
 async function startPayload(message, payload) {
   if (payload === 'help') { await sendScreen(message, 'help'); return true; }
+  // t_<SoundCloud track id>: that track, like a search result pressed (docs/SHORTCUT.md).
+  const track = /^t_(\d{1,15})$/.exec(payload);
+  if (track) {
+    await sendTrackById({ chatId: message.chat.id, replyTo: message.message_id }, message.from.id, Number(track[1]), 'deeplink');
+    return true;
+  }
   // const invite = /^inv_(\w+)$/.exec(payload);
   // if (invite) { await acceptInvite(message, invite[1]); return true; }
   return false;

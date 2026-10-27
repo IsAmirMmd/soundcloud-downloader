@@ -275,6 +275,22 @@ test('the probe\'s q: what search finds, and what it drops and why', async () =>
   assert.equal(found.next, null);
 });
 
+test('the probe\'s shortcut check: the page\'s client_id by the Shortcut\'s regex, then the raw search', async () => {
+  const fetched = soundcloud({ tracks: { 'https://soundcloud.com/a/one': scTrack(1), 'https://soundcloud.com/a/two': scTrack(2) } });
+  const r = await adminProbe({ q: 'cry for me', shortcut: true }, ctxOf(ADMIN_ID));
+  assert.equal(r.pages.safari.client_id, r.pages.shortcuts.client_id);
+  assert.match(r.pages.safari.client_id, /^[a-zA-Z0-9]{32}$/);
+  assert.equal(r.search.status, 200);
+  assert.equal(r.search.url, 'https://api-v2.soundcloud.com/search/tracks?q=cry%20for%20me&limit=2&client_id=<client_id>');
+  assert.deepEqual(r.search.body.collection.map((t) => t.id), [1, 2]);
+  assert.ok(fetched.some((u) => u.includes('/search/tracks?q=cry%20for%20me')));
+
+  soundcloud({ pageId: false });
+  const none = await adminProbe({ q: 'x', shortcut: true }, ctxOf(ADMIN_ID));
+  assert.equal(none.pages.safari.client_id, null);
+  assert.equal(none.search, undefined);
+});
+
 test('fileName: artist and title, without characters file systems refuse', () => {
   assert.equal(fileName({ id: 1, artist: 'A/C', title: 'Mix: "Live" <1>' }, 'mp3'), 'A C - Mix Live 1.mp3');
   assert.equal(fileName({ id: 5, artist: '', title: '' }, 'mp4'), 'soundcloud-5.mp4');

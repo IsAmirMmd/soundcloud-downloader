@@ -6,14 +6,16 @@
 //   { url: "…", download: false }            stop before downloading
 //   { search: "free download wav" }          tracks whose original upload is offered
 //   { q: "shadmehr" }                        what the bot's search finds, and what it drops and why
+//   { q: "shadmehr", shortcut: true }        what an iPhone Shortcut gets, raw (docs/SHORTCUT.md)
 
 import { requireAdmin, badInput } from '../lib/access.js';
-import { probe, findDownloadable } from '../lib/probe.js';
+import { probe, findDownloadable, shortcutCheck } from '../lib/probe.js';
 import { searchTracks } from '../lib/soundcloud.js';
 
 export default async function (input, ctx) {
   requireAdmin(ctx);
   if (typeof input.search === 'string' && input.search.trim()) return findDownloadable(input.search.trim());
+  if (typeof input.q === 'string' && input.q.trim() && input.shortcut) return shortcutCheck(input.q.trim(), Number(input.limit) || 2);
   if (typeof input.q === 'string' && input.q.trim()) {
     const found = await searchTracks(input.q.trim(), { offset: Number(input.offset) || 0, limit: Number(input.limit) || 20 });
     const line = (t) => `${t.id} ${t.artist} — ${t.title} (${t.duration} s, ${t.policy}, ${t.transcodings.map((x) => x.preset).join('/') || 'no streams listed'})`;

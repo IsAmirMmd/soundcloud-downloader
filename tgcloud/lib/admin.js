@@ -36,7 +36,7 @@ export async function sendStats() {
     `👥 Users: ${fa(s.users)}\n▶️ Started: ${fa(s.started)}\n⛔️ Blocked: ${fa(s.blocked)}\n` +
     `🆕 Last 24h: ${fa(s.new_1d)} · last 7 days: ${fa(s.new_7d)}\n\n` +
     `🔗 Asked: ${fa(d.links)} from ${fa(d.users)} users · last 24h: ${fa(d.links_1d)} from ${fa(d.users_1d)}\n` +
-    `   by search: ${fa(d.from_search)} · inline: ${fa(d.from_inline)} · the rest by link\n` +
+    `   by search: ${fa(d.from_search)} · inline: ${fa(d.from_inline)} · t_ deep link: ${fa(d.from_deeplink)} · the rest by link\n` +
     `🔎 Searches: ${fa(q.searches)} from ${fa(q.users)} users · last 24h: ${fa(q.searches_1d)}\n` +
     `⬇️ Downloaded: ${fa(d.sent)} · ♻️ from cache: ${fa(d.cached)} · ❌ failed: ${fa(d.failed)}\n` +
     `🎵 Tracks on Telegram: ${fa(d.tracks)} · in the storage channel: ${fa(d.stored)}\n` +

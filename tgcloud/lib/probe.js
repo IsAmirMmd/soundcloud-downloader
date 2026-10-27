@@ -9,7 +9,7 @@
 // step too. findDownloadable(q) lists such tracks, to have one to try. The
 // storage channel (lib/storage.js) is checked too: can the bot post there?
 
-import { api } from 'sdk';
+import { api, fetch } from 'sdk';
 import { ADMIN_ID, PROBE_TRACK_URL, STORAGE_CHAT_ID } from './config.js';
 import { storageStatus } from './storage.js';
 import { getSetting } from './settings.js';
@@ -76,6 +76,37 @@ export async function findDownloadable(q) {
   return (found?.collection ?? [])
     .filter((t) => t.downloadable && t.has_downloads_left !== false)
     .map((t) => ({ url: t.permalink_url, title: t.title, artist: t.user?.username ?? '', seconds: Math.round((t.full_duration ?? t.duration ?? 0) / 1000) }));
+}
+
+// What an iPhone Shortcut that searches SoundCloud itself gets
+// (docs/SHORTCUT.md), step by step, as the Shortcut does it: soundcloud.com's
+// page for the client_id, with the Shortcut's own regex and the user-agents
+// it may send, then api-v2's search, its JSON as it comes. → { pages, search }
+export const SHORTCUT_CLIENT_ID = /"apiClient","data":\{"id":"([a-zA-Z0-9]{32})"/;
+const SHORTCUT_AGENTS = {
+  shortcuts: 'Shortcuts/3 CFNetwork/1568.100.1 Darwin/24.0.0',
+  safari: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+};
+
+export async function shortcutCheck(q, limit = 2) {
+  const report = { pages: {} };
+  let id = null;
+  for (const [name, agent] of Object.entries(SHORTCUT_AGENTS)) {
+    try {
+      const res = await fetch('https://soundcloud.com/', { headers: { 'user-agent': agent } });
+      const page = await res.text();
+      const found = SHORTCUT_CLIENT_ID.exec(page)?.[1] ?? null;
+      report.pages[name] = { status: res.status, bytes: page.length, client_id: found };
+      id ??= found;
+    } catch (e) {
+      report.pages[name] = { error: e.message };
+    }
+  }
+  if (!id) return report;
+  const url = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(q)}&limit=${limit}&client_id=${id}`;
+  const res = await fetch(url, { headers: { 'user-agent': SHORTCUT_AGENTS.shortcuts } });
+  report.search = { status: res.status, url: url.replace(id, '<client_id>'), body: await res.json().catch(() => null) };
+  return report;
 }
 
 // /sc [link] — the probe, as a message to the admin.

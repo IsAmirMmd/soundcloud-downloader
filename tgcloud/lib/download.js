@@ -88,8 +88,8 @@ async function archive(track, fileId) {
 }
 
 // Never throws: logging must not turn a delivered track into an error.
-// `via`: how the track was asked for — 'link', 'search' (lib/search.js) or
-// 'inline' (lib/inline.js).
+// `via`: how the track was asked for — 'link', 'search' (lib/search.js),
+// 'inline' (lib/inline.js) or 'deeplink' (/start t_<id>).
 export async function logDownload(row) {
   try {
     await db.run(sql`
@@ -247,7 +247,8 @@ export async function downloadStats() {
            coalesce(sum(created_at > unixepoch() - 86400), 0) AS links_1d,
            count(DISTINCT CASE WHEN created_at > unixepoch() - 86400 THEN user_id END) AS users_1d,
            coalesce(sum(via = 'search'), 0) AS from_search,
-           coalesce(sum(via = 'inline'), 0) AS from_inline
+           coalesce(sum(via = 'inline'), 0) AS from_inline,
+           coalesce(sum(via = 'deeplink'), 0) AS from_deeplink
     FROM downloads`);
   const tracksKept = await db.get(sql`SELECT count(*) AS n FROM tracks`);
   const edits = await db.get(sql`SELECT count(*) AS n, count(DISTINCT chat_id) AS users FROM sent_audios WHERE edited = 1`);

@@ -101,6 +101,26 @@ test('a result pressed is downloaded like a link: ⏳, the channel, the audio wi
   assert.match(stats.params.text, /Searches: ۱ from ۱ users · last 24h: ۱/);
 });
 
+test('t.me/<bot>?start=t_<id> sends that track, like a result pressed (an iPhone Shortcut opens it)', async () => {
+  const m = msg(USER, '/start t_1');
+  await message(m, {});
+  const calls = take();
+  assert.match(calls.find((c) => c.method === 'sendMessage').params.text, /⏳/);
+  const toUser = calls.filter((c) => c.method === 'sendAudio').find((c) => c.params.chat_id === USER);
+  assert.equal(toUser.params.title, 'Shab');
+  assert.equal(toUser.params.reply_parameters.message_id, m.message_id);
+  const d = row('SELECT * FROM downloads');
+  assert.deepEqual([d.track_id, d.status, d.via], [1, 'sent', 'deeplink']);
+
+  // Anything else after t_ is no track: the menu, as for any unknown payload.
+  await message(msg(USER, '/start t_x1'), {});
+  assert.match(take()[0].params.text, /سلام/);
+  assert.equal(rows('SELECT * FROM downloads').length, 1);
+
+  await message(msg(ADMIN_ID, '/stats'), {});
+  assert.match(take().find((c) => /Users:/.test(c.params.text ?? '')).params.text, /t_ deep link: ۱/);
+});
+
 test('nothing found, a track gone, an old search, a short text', async () => {
   soundcloud({ tracks: {} });
   await message(msg(USER, 'nothing like it'), {});
