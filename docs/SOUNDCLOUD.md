@@ -233,7 +233,11 @@ real one. The real check runs where the bot runs:
 - **From GitHub:** Actions → *Run in cloud* → `endpoints/adminProbe` with `{}`
   or `{ url: "…" }`; `{ q: "…" }` shows what the bot's search finds for a
   text, and what it dropped and why (`BLOCKED`, `PREVIEW_ONLY`, `TOO_LONG`,
-  `NO_STREAM`). `check.yml` runs it on every branch other than `main`.
+  `NO_STREAM`); `{ q: "…", shortcut: true }` does what the iPhone Shortcut
+  does ([SHORTCUT.md](SHORTCUT.md)): the page's client_id by the Shortcut's
+  regex with two user-agents, then the raw search JSON. Seen 2026-10-27: an
+  iPhone Safari user-agent gets a mobile page **without** the hydration
+  client_id; the Shortcut's own (CFNetwork) one gets it. `check.yml` runs it on every branch other than `main`.
 - **From a terminal:**
   `npx tgcloud run endpoints/adminProbe '{ url: "https://soundcloud.com/…" }' --ctx '{ initData: { user: { id: 199419831 } } }'`
 

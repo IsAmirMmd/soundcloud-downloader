@@ -73,6 +73,7 @@ scripts/sql.mjs               ← `npm run sql -- "SELECT …"`
 .claude/skills/               ← this project's skills for Claude Code (soundcloud-api, telegram-audio, bot-feature)
 docs/ARCHITECTURE.md          ← this file
 docs/SOUNDCLOUD.md            ← how a link becomes an audio message; limits, risks, roadmap
+docs/SHORTCUT.md              ← iPhone Shortcut: search SoundCloud directly, hand the track to the bot (start=t_<id>)
 AGENTS.md, docs/tgcloud-sdk.md← platform rules + SDK reference (from `tgcloud init`)
 tgcloud.jsonc                 ← "static": the Mini App's build folder
 .tgcloud/                     ← CLI state + credentials; gitignored; never read or edit
@@ -117,7 +118,9 @@ plus a workflow. A job therefore also works by hand: send the command, or
 
 - **`handlers/message.js`** checks, in this order:
   1. payments (`successful_payment`);
-  2. `/start` (track the user, then the deep-link payload, then the menu);
+  2. `/start` (track the user, then the deep-link payload — `help`, or
+     `t_<track id>`: that track, for the iPhone Shortcut in docs/SHORTCUT.md —
+     then the menu);
   3. `/stop`;
   4. admin commands;
   5. public commands;

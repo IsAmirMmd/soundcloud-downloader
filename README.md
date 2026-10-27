@@ -31,6 +31,10 @@ https://on.soundcloud.com/AbCd123
 - **در هر چت دیگر (اینلاین):** بنویسید `@<bot> اسم آهنگ` و از لیست انتخاب کنید. آهنگی که قبلاً روی تلگرام است همان لحظه فرستاده می‌شود؛ بقیه اول یک پیام «🎵 اسم / ⏳ در حال آماده‌سازی…» می‌شوند و چند ثانیه بعد ربات همان پیام را به فایل صوتی تبدیل می‌کند (از کانال ذخیره، چون پیام اینلاین آپلود قبول نمی‌کند). دکمه‌های ✏️ 🎤 🖼 فقط در خود ربات هستند.
 - برای اینلاین در **BotFather** این دو باید روشن باشند: `/setinline` (متن راهنما مثلاً «اسم آهنگ یا خواننده…») و `/setinlinefeedback` روی 100%. بدون دومی، پیام «⏳» با زدن دکمه‌اش پر می‌شود.
 
+### شورتکات آیفون
+
+اندپوینت‌های ربات از بیرون تلگرام قابل صدا زدن نیستند (بدون init data امضاشده‌ی تلگرام جواب `401` می‌دهند). شورتکات خودش از API ساندکلاد جستجو می‌کند و آهنگ انتخاب‌شده را با لینک `tg://resolve?domain=<bot>&start=t_<id>` به ربات می‌دهد. درخواست‌ها، نمونه‌ی واقعی جواب و قدم‌های ساختن شورتکات: [`docs/SHORTCUT.md`](docs/SHORTCUT.md).
+
 ### عوض کردن اسم، خواننده و کاور
 
 زیر هر فایل صوتی سه دکمه هست:
@@ -182,7 +186,7 @@ scripts/sql.mjs                     ← npm run sql
 scripts/render-branding.mjs         ← ساخت عکس پروفایل و بنر از branding/*.html (Playwright)
 branding/                           ← BOTFATHER.md (اسم، بیو، توضیح)، avatar/banner به‌صورت HTML و PNG
 assets/fonts/                       ← وزیرمتن (SIL OFL)، برای عکس‌های برندینگ
-docs/                               ← ARCHITECTURE.md، SOUNDCLOUD.md، tgcloud-sdk.md
+docs/                               ← ARCHITECTURE.md، SOUNDCLOUD.md، SHORTCUT.md (شورتکات آیفون)، tgcloud-sdk.md
 .claude/skills/                     ← bot-feature، soundcloud-api، telegram-audio
 .github/workflows/                  ← deploy، check، run (Run in cloud)، scheduled
 ```
