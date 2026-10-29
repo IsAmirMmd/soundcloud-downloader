@@ -86,7 +86,7 @@ https://on.soundcloud.com/AbCd123
 | `/stats` | کاربران، درخواست‌ها (لینک، جستجو، اینلاین)، جستجوها، دانلودها، ارسال از کش، خطاها به تفکیک دلیل |
 | `/sc [لینک]` | بررسی قدم‌به‌قدم ساندکلاد از سرور تلگرام: client_id، resolve، فرمت‌ها، دانلود (بدون ارسال) |
 | `/setclientid <id>` | تنظیم دستی client_id ساندکلاد، اگر برداشتنش از سایت خراب شد |
-| `/backup` | جدول‌های `users`، `tracks` و `downloads` به‌صورت CSV (هر ۸ ساعت هم خودکار) |
+| `/backup` | جدول‌های `users`، `tracks` و `downloads` به‌صورت CSV (ارسال خودکار هر ۸ ساعت فعلاً خاموش است) |
 | `/doc <مسیر> [برنچ یا کامیت]` | یک فایل از همین ریپو (مثلاً `docs/SHORTCUT.md`) را از گیت‌هاب به‌صورت فایل در چت ادمین می‌فرستد |
 | `/ping` | تست زنده بودن ربات |
 | `/setcommands` | به‌روزرسانی دستی لیست دستورهای `/` (هر دیپلوی و `/start` ادمین خودشان این کار را می‌کنند) |
@@ -139,7 +139,7 @@ npx tgcloud migrate
 - **`run.yml` (Run in cloud):** یک ماژول را به‌عنوان ادمین و بدون دیپلوی در سرور اجرا می‌کند، مثلاً:
   - `endpoints/adminProbe` با `{ url: "https://soundcloud.com/…" }`
   - `endpoints/sql` با `{ q: "SELECT status, error, count(*) AS n FROM downloads GROUP BY 1, 2" }`
-- **`scheduled.yml`:** هر ۸ ساعت `/backup` را اجرا می‌کند.
+- **`scheduled.yml`:** `/backup` را اجرا می‌کند؛ اجرای خودکار هر ۸ ساعت فعلاً خاموش است (برای روشن کردن، `schedule` را در فایل از کامنت دربیاورید) و فقط دستی اجرا می‌شود.
 - از ترمینال: `npm run sql -- "SELECT * FROM downloads ORDER BY id DESC LIMIT 10"`.
 - قراردادهای پروژه در [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) و نحوه‌ی کار در [`CLAUDE.md`](CLAUDE.md) است.
 

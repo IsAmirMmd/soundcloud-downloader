@@ -69,7 +69,7 @@ scripts/sql.mjs               ← `npm run sql -- "SELECT …"`
   deploy.yml                  ← push to main → npm test, build, push, migrate --safe, webhook sync, "/" commands
   check.yml                   ← other branches / PRs → npm test, then endpoints/adminProbe in the cloud (no deploy)
   run.yml                     ← by hand: run one module in the cloud as the admin (e.g. endpoints/adminProbe)
-  scheduled.yml               ← cron → `tgcloud run handlers/message '{ text: "/backup", … }'`
+  scheduled.yml               ← cron (paused; by hand for now) → `tgcloud run handlers/message '{ text: "/backup", … }'`
 .claude/skills/               ← this project's skills for Claude Code (soundcloud-api, telegram-audio, bot-feature)
 docs/ARCHITECTURE.md          ← this file
 docs/SOUNDCLOUD.md            ← how a link becomes an audio message; limits, risks, roadmap
